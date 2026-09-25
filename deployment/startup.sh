@@ -68,6 +68,25 @@ else
   log "fetch failed (offline?) — starting with the existing build"
 fi
 
+# --- 1b. Sync submodules (vendored drivers, e.g. sllidar_ros2) --------------
+# Runs every boot, not only after a pull: a Pi that pulled before the
+# submodule existed still has an empty directory. Bounded + non-fatal, like
+# the fetch above. A submodule that was just populated forces a rebuild.
+if [ -f "$REPO/.gitmodules" ]; then
+  if timeout 60 git submodule update --init --recursive 2>&1; then
+    log "submodules up to date"
+  else
+    log "WARNING: submodule update failed (offline?) — continuing with what's on disk"
+  fi
+fi
+# Newly initialized driver source that has never been built -> rebuild.
+for pkg in sllidar_ros2; do
+  if [ -f "$WS/src/$pkg/package.xml" ] && [ ! -d "$WS/install/$pkg" ]; then
+    log "$pkg source present but not installed, will rebuild"
+    REBUILD=1
+  fi
+done
+
 # --- 2. Build if updated or never built ------------------------------------
 [ -f "$WS/install/setup.bash" ] || REBUILD=1
 if [ "$REBUILD" = 1 ]; then
