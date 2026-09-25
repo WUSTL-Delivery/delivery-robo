@@ -246,7 +246,7 @@ the C1 is plugged in; `lidar:=false` turns it off):
 - TF `base_footprint -> base_link -> lidar_link` from `robot_state_publisher`
 
 To check that Nav2 really builds a costmap from it (robot-centred, no odometry
-needed), run next to the robot stack and view `/costmap/costmap` in RViz as a
+needed), run next to the robot stack and view `/costmap` in RViz as a
 Map display with Fixed Frame `base_link`:
 
 ```bash

@@ -5,7 +5,7 @@ Run it next to the robot stack (master_launch.py, or the boot service):
     ros2 launch my_bringup costmap_check.launch.py              # uses /scan_filtered
     ros2 launch my_bringup costmap_check.launch.py scan_topic:=/scan
 
-Publishes nav_msgs/OccupancyGrid on /costmap/costmap (view it in RViz as a Map
+Publishes nav_msgs/OccupancyGrid on /costmap (view it in RViz as a Map
 display, Fixed Frame base_link). Robot-centred, no odometry needed; see
 config/costmap_check.yaml. Needs:
     sudo apt install ros-jazzy-nav2-costmap-2d ros-jazzy-nav2-lifecycle-manager
@@ -38,7 +38,7 @@ def generate_launch_description():
 
     params = os.path.join(get_package_share_directory('my_bringup'), 'config', 'costmap_check.yaml')
     return LaunchDescription(args + [
-        # Standalone Costmap2DROS; it names itself /costmap/costmap.
+        # Standalone Costmap2DROS; in Jazzy it names itself /costmap.
         Node(
             package='nav2_costmap_2d',
             executable='nav2_costmap_2d',
@@ -50,6 +50,8 @@ def generate_launch_description():
             executable='lifecycle_manager',
             name='lifecycle_manager_costmap_check',
             output='screen',
-            parameters=[{'autostart': True, 'node_names': ['costmap/costmap']}],
+            # bond_timeout 0: the standalone costmap never opens a bond, so the
+            # default 4 s bond check aborts bringup (the costmap stays active).
+            parameters=[{'autostart': True, 'node_names': ['costmap'], 'bond_timeout': 0.0}],
         ),
     ])
