@@ -55,6 +55,21 @@ def generate_launch_description():
       parameters=[{'robot_id': robot_id, 'api_url': api_url, 'mode': mode}],
    )
 
+   # --- robot description (TF) ---------------------------------------------
+   # Both modes: robot_state_publisher for base_footprint -> base_link ->
+   # lidar_link / imu_link / gps_link. Guarded like ublox so a Pi without
+   # robot_description built still launches.
+   try:
+      _desc_dir = get_package_share_directory('robot_description')
+      robot_description_actions = [IncludeLaunchDescription(
+         PythonLaunchDescriptionSource(
+            os.path.join(_desc_dir, 'launch', 'description.launch.py')),
+      )]
+   except PackageNotFoundError:
+      robot_description_actions = []
+      print('[master_launch] robot_description not found; no robot TF (lidar_link/imu_link)')
+   # --- end robot description (TF) -----------------------------------------
+
    # --- teleop: wired joystick (verified working on the Pi, keep as-is) -----
    joy_node = Node(
       package='joy',
@@ -126,6 +141,7 @@ def generate_launch_description():
         robot_id_arg,
         api_url_arg,
         *([heartbeat_node] if heartbeat_available else []),
+        *robot_description_actions,  # robot description (TF)
         joy_node, 
         control_node, 
         *autonomous_nodes
