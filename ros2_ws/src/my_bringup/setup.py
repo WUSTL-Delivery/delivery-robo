@@ -29,6 +29,7 @@ setup(
     entry_points={
         'console_scripts': [
             'heartbeat_node = my_bringup.heartbeat_node:main',
+            'lidar_watchdog = my_bringup.lidar_watchdog:main',
         ],
     },
 )

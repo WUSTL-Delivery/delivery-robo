@@ -1,0 +1,25 @@
+# RPLidar C1 (Slamtec sllidar_ros2 driver) + hot-plug watchdog.
+# Values mirror upstream sllidar_ros2/launch/sllidar_c1_launch.py, except the
+# port (/dev/rplidar, a udev symlink) and frame (lidar_link, from the URDF).
+sllidar_node:
+  ros__parameters:
+    channel_type: serial
+    serial_port: /dev/rplidar
+    serial_baudrate: 460800
+    frame_id: lidar_link
+    inverted: false
+    angle_compensate: true
+    scan_mode: Standard
+
+# See my_bringup/lidar_watchdog.py. sllidar_node exits by itself when the port
+# is missing at startup (respawn retries), but it does NOT exit when the lidar
+# is unplugged mid-run -- it spins on read timeouts forever. The watchdog
+# SIGINTs it once /scan has been silent for stale_timeout_s so respawn can
+# reopen the (re-plugged) device.
+lidar_watchdog:
+  ros__parameters:
+    scan_topic: /scan
+    process_name: sllidar_node
+    stale_timeout_s: 5.0
+    check_period_s: 1.0
+    kill_grace_s: 5.0
