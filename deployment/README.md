@@ -175,3 +175,17 @@ install on the Pi:
 ```sh
 HOTSPOT_SSID='<ssid>' HOTSPOT_PSK='<password>' sudo -E deployment/wifi/install.sh
 ```
+
+## Lidar -> costmap
+
+`ros2_ws/src/my_bringup/config/costmap_lidar.example.yaml` is an **example, not
+launched** Nav2 (Jazzy) params snippet for when costmap work starts (here or in
+delivery-autonomy's MPPI stack). It defines `local_costmap` (global frame
+`odom`) and `global_costmap` (global frame `map`), each with an
+`obstacle_layer` + `inflation_layer` fed by one observation source `scan`:
+`/scan_filtered` (LaserScan, `sensor_frame: lidar_link`), marking + clearing,
+`obstacle_max_range: 8.0`, `raytrace_max_range: 10.0`,
+`robot_base_frame: base_link`. The footprint is the sim chassis (0.8 x 0.4 m)
+until TDM-13 confirms the real one. No launch file loads it and `setup.py`
+doesn't install `config/` yet — copy the sections into the real Nav2 params
+file when wiring it up.
