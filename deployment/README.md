@@ -131,9 +131,8 @@ systemctl is-enabled robot.service      # "enabled" = starts on boot
 journalctl -u robot.service -f          # live logs (launch output goes here)
 ```
 
-Each run also writes a separate log to
-`~/.local/state/delivery-robo/startup-<timestamp>-<pid>.log`.
-`latest-startup.log` in that directory points to the newest run:
+Each run overwrites `~/.local/state/delivery-robo/latest-startup.log`, so the
+file always contains output from the latest startup:
 
 ```sh
 tail -F ~/.local/state/delivery-robo/latest-startup.log
@@ -151,7 +150,8 @@ ROS output continues in the log, and systemd records its eventual exit status.
 Set `ROBOT_LOG_DIR=/path/to/logs` to choose another directory (use a systemd
 environment override when running as a service). If the log directory cannot
 be written, startup prints a warning and continues with console/journal output.
-Previous runs are kept until removed manually.
+Timestamped logs created by older versions are left in place; new runs reuse
+`latest-startup.log` without creating additional files.
 
 ## History
 

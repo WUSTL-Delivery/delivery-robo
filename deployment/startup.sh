@@ -14,14 +14,15 @@ set -o pipefail
 
 log() { printf '[%(%Y-%m-%dT%H:%M:%S%z)T] [startup] %s\n' -1 "$*" >&2; }
 
-# Keep each boot's output, including stderr and the ROS process we exec below.
+# Reset one log file on each run, including stderr and the ROS process we exec below.
 # tee also leaves output visible in the terminal / systemd journal.
 LOG_DIR="${ROBOT_LOG_DIR:-$HOME/.local/state/delivery-robo}"
-printf -v LOG_NAME 'startup-%(%Y%m%dT%H%M%S%z)T-%s.log' -1 "$$"
-LOG_FILE="$LOG_DIR/$LOG_NAME"
-if mkdir -p -- "$LOG_DIR" && (umask 077; : >> "$LOG_FILE") && command -v tee >/dev/null 2>&1; then
+LOG_FILE="$LOG_DIR/latest-startup.log"
+# Replace the previous version's symlink, leaving its archived log intact.
+if mkdir -p -- "$LOG_DIR" && command -v tee >/dev/null 2>&1 &&
+   { [ ! -L "$LOG_FILE" ] || rm -- "$LOG_FILE"; } &&
+   (umask 077; : > "$LOG_FILE"); then
   exec > >(tee -a -- "$LOG_FILE") 2>&1
-  ln -sfn -- "$LOG_NAME" "$LOG_DIR/latest-startup.log" || log "WARNING: could not update latest-startup.log"
   log "log file: $LOG_FILE"
 else
   log "WARNING: cannot enable file logging at $LOG_FILE; continuing with console output"
