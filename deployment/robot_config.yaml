@@ -5,6 +5,8 @@
 # Which stack master_launch.py brings up:
 #   teleop     - wired joystick teleop (joy_node + joystick_control)
 #   autonomous - sensor stack (RTK GPS + NTRIP, IMU)
+# Both modes also run the robot model TF and the RPLidar C1 (/scan,
+# /scan_filtered) whenever the lidar is plugged in.
 mode: teleop
 
 # Identity shown on the robo-web dashboard (../robo-web, deployed on Vercel).

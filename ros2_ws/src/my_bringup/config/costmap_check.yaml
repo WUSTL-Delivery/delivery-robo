@@ -1,0 +1,46 @@
+# Lidar -> Nav2 costmap CHECK (not the real navigation config).
+# Used by launch/costmap_check.launch.py to prove the RPLidar scan builds a
+# Nav2 costmap. It needs no odometry: the costmap is robot-centred
+# (global_frame = robot_base_frame = base_link), so it works on a bench or on
+# the Pi before the EKF/odom stack is running. The real local/global costmap
+# settings live in costmap_lidar.example.yaml (global_frame odom / map).
+#
+# Needs: sudo apt install ros-jazzy-nav2-costmap-2d ros-jazzy-nav2-lifecycle-manager
+costmap:
+  costmap:
+    ros__parameters:
+      global_frame: base_link
+      robot_base_frame: base_link
+      transform_tolerance: 0.3
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      rolling_window: true
+      width: 12                 # m, centred on the robot (C1 is ~12 m range)
+      height: 12
+      resolution: 0.05
+      # TODO(TDM-13): same provisional footprint as costmap_lidar.example.yaml
+      footprint: "[[0.4, 0.2], [0.4, -0.2], [-0.4, -0.2], [-0.4, 0.2]]"
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan_filtered   # overridden by the launch arg scan_topic
+          data_type: "LaserScan"
+          sensor_frame: lidar_link
+          marking: true
+          clearing: true
+          obstacle_max_range: 8.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          inf_is_valid: false
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.55
+        cost_scaling_factor: 3.0
+      always_send_full_costmap: true

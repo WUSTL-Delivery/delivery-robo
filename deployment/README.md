@@ -235,6 +235,21 @@ delivery-autonomy's MPPI stack). It defines `local_costmap` (global frame
 `/scan_filtered` (LaserScan, `sensor_frame: lidar_link`), marking + clearing,
 `obstacle_max_range: 8.0`, `raytrace_max_range: 10.0`,
 `robot_base_frame: base_link`. The footprint is the sim chassis (0.8 x 0.4 m)
-until TDM-13 confirms the real one. No launch file loads it and `setup.py`
-doesn't install `config/` yet — copy the sections into the real Nav2 params
-file when wiring it up.
+until TDM-13 confirms the real one. No launch file loads it — copy the
+sections into the real Nav2 params file when wiring it up.
+
+What the robot publishes for Nav2 (both modes, from `master_launch.py`, while
+the C1 is plugged in; `lidar:=false` turns it off):
+
+- `/scan`: raw `sensor_msgs/LaserScan` from `sllidar_node`, ~10 Hz, frame `lidar_link`
+- `/scan_filtered`: the same scan with the robot body removed (laser_filters)
+- TF `base_footprint -> base_link -> lidar_link` from `robot_state_publisher`
+
+To check that Nav2 really builds a costmap from it (robot-centred, no odometry
+needed), run next to the robot stack and view `/costmap/costmap` in RViz as a
+Map display with Fixed Frame `base_link`:
+
+```bash
+sudo apt install ros-jazzy-nav2-costmap-2d ros-jazzy-nav2-lifecycle-manager   # once
+ros2 launch my_bringup costmap_check.launch.py            # or scan_topic:=/scan
+```

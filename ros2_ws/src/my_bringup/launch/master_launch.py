@@ -32,7 +32,7 @@ def generate_launch_description():
    lidar = LaunchConfiguration('lidar')
    lidar_arg = DeclareLaunchArgument(
       'lidar', default_value='true', choices=['true', 'false'],
-      description='autonomous mode only: run the RPLidar C1 driver (+ hot-plug watchdog)',
+      description='both modes: run the RPLidar C1 driver (/scan), hot-plug watchdog and /scan_filtered',
    )
    is_teleop = IfCondition(PythonExpression(["'", mode, "' == 'teleop'"]))
    is_autonomous = IfCondition(PythonExpression(["'", mode, "' == 'autonomous'"]))
@@ -143,22 +143,25 @@ def generate_launch_description():
 
    # --- lidar (RPLidar C1) ---------------------------------------------------
    # sllidar_ros2 driver on /dev/rplidar -> /scan (frame lidar_link); params in
-   # config/lidar.yaml. Autonomous mode only, and `lidar:=false` disables it.
+   # config/lidar.yaml. Runs in BOTH modes (like the robot description) so the
+   # Pi publishes /scan whenever the C1 is plugged in; `lidar:=false` disables
+   # the driver, watchdog and filter. /scan + TF base_link->lidar_link is what a
+   # Nav2 costmap obstacle layer consumes (see config/costmap_lidar.example.yaml).
    # Hot-plug: sllidar_node exits when the port is missing at startup, so
    # respawn keeps retrying every ~3 s until the lidar is plugged in. It does
    # NOT exit when unplugged mid-run (spins on read timeouts), so
    # lidar_watchdog SIGINTs it once /scan is silent for 5 s and respawn then
    # reopens the re-plugged device. Guarded like ublox_dgnss so launch still
    # works where the driver isn't built.
-   use_lidar = IfCondition(PythonExpression(
-      ["'", mode, "' == 'autonomous' and '", lidar, "' == 'true'"]))
+   use_lidar = IfCondition(PythonExpression(["'", lidar, "' == 'true'"]))
+   lidar_nodes = []
    lidar_params = os.path.join(get_package_share_directory('my_bringup'), 'config', 'lidar.yaml')
    try:
       get_package_share_directory('sllidar_ros2')
       lidar_available = True
    except PackageNotFoundError:
       lidar_available = False
-      print('[master_launch] sllidar_ros2 not found; autonomous mode has no lidar (/scan)')
+      print('[master_launch] sllidar_ros2 not found; no lidar (/scan)')
 
    lidar_node = Node(
       package='sllidar_ros2',
@@ -192,19 +195,19 @@ def generate_launch_description():
    )
 
    if lidar_available:
-      autonomous_nodes += [lidar_node]
+      lidar_nodes += [lidar_node]
       if watchdog_available:
-         autonomous_nodes += [lidar_watchdog]
+         lidar_nodes += [lidar_watchdog]
       else:
          print('[master_launch] lidar_watchdog executable not found (stale build?); lidar will not recover from a mid-run unplug')
 
    # --- lidar self-hit filter: /scan -> /scan_filtered (TDM-16) -----------
    # Needs: sudo apt install ros-jazzy-laser-filters
-   # Guarded so autonomous mode still launches where it isn't installed.
-   # Follows the lidar: only when mode=autonomous and lidar:=true.
+   # Guarded so the launch still works where it isn't installed.
+   # Follows the lidar: both modes, off with lidar:=false.
    try:
       get_package_share_directory('laser_filters')
-      autonomous_nodes.append(Node(
+      lidar_nodes.append(Node(
          package='laser_filters',
          executable='scan_to_scan_filter_chain',
          # No name=: it remaps EVERY node in the process, and the box filter
@@ -232,5 +235,6 @@ def generate_launch_description():
         *robot_description_actions,  # robot description (TF)
         joy_node, 
         control_node, 
-        *autonomous_nodes
+        *autonomous_nodes,
+        *lidar_nodes,
     ])
