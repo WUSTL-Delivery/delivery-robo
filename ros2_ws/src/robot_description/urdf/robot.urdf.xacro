@@ -1,0 +1,196 @@
+<?xml version="1.0"?>
+<!--
+  Delivery robot model (real hardware).
+
+  Ported from delivery-autonomy/src/simulation/urdf/robot.urdf.xacro with all
+  <gazebo> tags/plugins removed, so sim and real share the same frame names:
+
+    base_footprint -> base_link -> lidar_link   (scan frame, fixed)
+                                -> imu_link     (imu_node stamps this, fixed)
+                                -> gps_link     (fixed)
+                                -> camera_link  (fixed, optional)
+                                -> *_wheel / *_steering_link (moving joints)
+
+  Moving joints (wheels, steering) only get TF once something publishes
+  /joint_states; the fixed sensor frames above are unaffected.
+-->
+<robot name="delivery_robot" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- ===================== Sensor mounts (edit these) ===================== -->
+  <!-- Offsets are from base_link (chassis centre), metres / radians.         -->
+
+  <!-- TODO(TDM-13): replace with measured values.
+       Placeholders are the sim's values: x = chassis_length/2 - 0.1,
+       z = chassis_height/2 + 0.05. -->
+  <xacro:property name="lidar_x" value="0.3"/>
+  <xacro:property name="lidar_y" value="0.0"/>
+  <xacro:property name="lidar_z" value="0.15"/>
+  <xacro:property name="lidar_yaw" value="0.0"/>
+
+  <!-- TODO(TDM-13): replace with measured values.
+       Placeholders are the sim's values. -->
+  <xacro:property name="imu_x" value="0.0"/>
+  <xacro:property name="imu_y" value="0.0"/>
+  <xacro:property name="imu_z" value="0.1"/>
+  <xacro:property name="imu_yaw" value="0.0"/>
+
+  <!-- ============================ Chassis ================================= -->
+  <xacro:property name="chassis_length" value="0.8"/>
+  <xacro:property name="chassis_width" value="0.4"/>
+  <xacro:property name="chassis_height" value="0.2"/>
+  <xacro:property name="wheel_radius" value="0.15"/>
+  <xacro:property name="wheel_width" value="0.08"/>
+  <xacro:property name="wheel_mass" value="2.0"/>
+  <xacro:property name="chassis_mass" value="20.0"/>
+  <xacro:property name="wheelbase" value="0.5"/>
+  <xacro:property name="track_width" value="0.55"/>
+
+  <xacro:macro name="box_inertia" params="m w h d">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m/12 * (h*h + d*d)}" ixy="0" ixz="0"
+               iyy="${m/12 * (w*w + d*d)}" iyz="0"
+               izz="${m/12 * (w*w + h*h)}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="cylinder_inertia" params="m r h">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m*(3*r*r + h*h)/12}" ixy="0" ixz="0"
+               iyy="${m*(3*r*r + h*h)/12}" iyz="0"
+               izz="${m*r*r/2}"/>
+    </inertial>
+  </xacro:macro>
+
+  <link name="base_footprint"/>
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+      </geometry>
+      <material name="orange"><color rgba="1 0.5 0 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertia m="${chassis_mass}" w="${chassis_width}" h="${chassis_height}" d="${chassis_length}"/>
+  </link>
+
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ============================= Wheels ================================= -->
+  <xacro:macro name="rear_wheel" params="prefix y_offset">
+    <link name="${prefix}_wheel">
+      <visual>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <material name="black"><color rgba="0 0 0 1"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+      <xacro:cylinder_inertia m="${wheel_mass}" r="${wheel_radius}" h="${wheel_width}"/>
+    </link>
+
+    <joint name="${prefix}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${prefix}_wheel"/>
+      <origin xyz="${-wheelbase/2} ${y_offset} ${-chassis_height/2}" rpy="-1.5707 0 0"/>
+      <dynamics damping="0.5" friction="0.1"/>
+      <axis xyz="0 0 1"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="front_wheel" params="prefix y_offset">
+    <link name="${prefix}_steering_link">
+      <inertial>
+        <mass value="0.1"/>
+        <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+      </inertial>
+    </link>
+
+    <joint name="${prefix}_steering_joint" type="revolute">
+      <parent link="base_link"/>
+      <child link="${prefix}_steering_link"/>
+      <origin xyz="${wheelbase/2} ${y_offset} ${-chassis_height/2}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-0.6" upper="0.6" effort="100" velocity="1.0"/>
+    </joint>
+
+    <link name="${prefix}_wheel">
+      <visual>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <material name="black"><color rgba="0 0 0 1"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+      <xacro:cylinder_inertia m="${wheel_mass}" r="${wheel_radius}" h="${wheel_width}"/>
+    </link>
+
+    <joint name="${prefix}_wheel_joint" type="continuous">
+      <parent link="${prefix}_steering_link"/>
+      <child link="${prefix}_wheel"/>
+      <origin xyz="0 0 0" rpy="-1.5707 0 0"/>
+      <dynamics damping="0.5" friction="0.1"/>
+      <axis xyz="0 0 1"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:rear_wheel prefix="rear_left" y_offset="${track_width/2}"/>
+  <xacro:rear_wheel prefix="rear_right" y_offset="${-track_width/2}"/>
+  <xacro:front_wheel prefix="front_left" y_offset="${track_width/2}"/>
+  <xacro:front_wheel prefix="front_right" y_offset="${-track_width/2}"/>
+
+  <!-- ============================= Sensors ================================ -->
+  <link name="lidar_link">
+    <visual>
+      <geometry><cylinder radius="0.05" length="0.05"/></geometry>
+      <material name="blue"><color rgba="0 0 1 1"/></material>
+    </visual>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="${lidar_x} ${lidar_y} ${lidar_z}" rpy="0 0 ${lidar_yaw}"/>
+  </joint>
+
+  <link name="imu_link">
+    <visual>
+      <geometry><box size="0.02 0.02 0.02"/></geometry>
+      <material name="black"><color rgba="0 0 0 1"/></material>
+    </visual>
+  </link>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="${imu_x} ${imu_y} ${imu_z}" rpy="0 0 ${imu_yaw}"/>
+  </joint>
+
+  <link name="gps_link"/>
+  <joint name="gps_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="gps_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_link">
+    <visual>
+      <geometry><box size="0.05 0.1 0.05"/></geometry>
+      <material name="red"><color rgba="1 0 0 1"/></material>
+    </visual>
+  </link>
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="${chassis_length/2} 0 0.15" rpy="0 0 0"/>
+  </joint>
+
+</robot>
