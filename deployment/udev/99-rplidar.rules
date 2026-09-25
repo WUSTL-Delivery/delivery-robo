@@ -1,0 +1,33 @@
+# SLAMTEC RPLidar C1 -> stable /dev/rplidar symlink
+#
+# The C1 talks through a Silicon Labs CP2102 USB-UART bridge
+# (idVendor 10c4, idProduct ea60) at 460800 baud. The sllidar_ros2 driver
+# opens /dev/rplidar, so the lidar works no matter which /dev/ttyUSBn it
+# enumerates as, and the symlink appears/disappears with hot-plug.
+#
+# Install: sudo deployment/udev/install_udev.sh   (see deployment/README.md)
+#
+# CAVEAT: the CP2102 is a very common chip (many ESP32 / microcontroller
+# dev boards use it). If any OTHER 10c4:ea60 device is ever plugged into the
+# Pi (e.g. the wheel-encoder microcontroller board), the generic rule below
+# would give it the /dev/rplidar symlink too. In that case pin the rule to
+# the C1's own USB serial number:
+#
+#   1. Plug in ONLY the C1 and find its port:   ls /dev/ttyUSB*
+#   2. Read its serial:
+#        udevadm info -a -n /dev/ttyUSB0 | grep -m1 'ATTRS{serial}'
+#      (the first ATTRS{serial} printed walking up from the tty is the
+#      CP2102's, in the same parent block as ATTRS{idVendor}=="10c4")
+#   3. Comment out RULE A and uncomment RULE B, replacing
+#      REPLACE_WITH_C1_SERIAL with that value.
+#   4. Re-run: sudo deployment/udev/install_udev.sh
+#
+# MODE 0666 lets the driver open the port even before the user's dialout
+# membership takes effect (needs a re-login); dialout is still added by the
+# install script.
+
+# RULE A (default): any CP2102 -> /dev/rplidar
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="rplidar", MODE="0666", GROUP="dialout"
+
+# RULE B (serial-pinned; use when another CP2102 device shares the Pi):
+#SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="REPLACE_WITH_C1_SERIAL", SYMLINK+="rplidar", MODE="0666", GROUP="dialout"
