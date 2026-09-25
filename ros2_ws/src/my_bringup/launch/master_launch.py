@@ -121,6 +121,27 @@ def generate_launch_description():
    if ublox_dir is not None:
       autonomous_nodes += [gps_main_node, gps_ntrip_node]
 
+   # --- lidar self-hit filter: /scan -> /scan_filtered (TDM-16) -----------
+   # Needs: sudo apt install ros-jazzy-laser-filters
+   # Guarded so autonomous mode still launches where it isn't installed.
+   try:
+      get_package_share_directory('laser_filters')
+      autonomous_nodes.append(Node(
+         package='laser_filters',
+         executable='scan_to_scan_filter_chain',
+         name='scan_to_scan_filter_chain',
+         respawn=True,
+         respawn_delay=3.0,
+         output='screen',
+         parameters=[os.path.join(get_package_share_directory('my_bringup'),
+                                  'config', 'laser_filters.yaml')],
+         remappings=[('scan', '/scan'), ('scan_filtered', '/scan_filtered')],
+         condition=is_autonomous,
+      ))
+   except PackageNotFoundError:
+      print('[master_launch] laser_filters not found; no /scan_filtered '
+            '(sudo apt install ros-jazzy-laser-filters)')
+
    return LaunchDescription([
         mode_arg,
         robot_id_arg,
