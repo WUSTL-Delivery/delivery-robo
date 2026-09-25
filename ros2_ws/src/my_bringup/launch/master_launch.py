@@ -207,7 +207,10 @@ def generate_launch_description():
       autonomous_nodes.append(Node(
          package='laser_filters',
          executable='scan_to_scan_filter_chain',
-         name='scan_to_scan_filter_chain',
+         # No name=: it remaps EVERY node in the process, and the box filter
+         # runs its own internal node, so both would be called
+         # scan_to_scan_filter_chain (breaks param services). The default
+         # name already matches the key in laser_filters.yaml.
          respawn=True,
          respawn_delay=3.0,
          output='screen',
