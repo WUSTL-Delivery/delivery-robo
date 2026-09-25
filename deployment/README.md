@@ -131,6 +131,28 @@ systemctl is-enabled robot.service      # "enabled" = starts on boot
 journalctl -u robot.service -f          # live logs (launch output goes here)
 ```
 
+Each run also writes a separate log to
+`~/.local/state/delivery-robo/startup-<timestamp>-<pid>.log`.
+`latest-startup.log` in that directory points to the newest run:
+
+```sh
+tail -F ~/.local/state/delivery-robo/latest-startup.log
+cat ~/.local/state/delivery-robo/latest-startup.log   # share this when debugging
+```
+
+The log captures stdout and stderr from Git, colcon, ROS setup files, and the
+ROS launch, while keeping output in the terminal and journal. Timestamped
+stage markers and command exit codes show the repository state, fetch/merge
+results (including fetch timeouts), build decisions, config parsing, setup
+results, and heartbeat HTTP errors. Logging starts before fetching so failures
+to locate the repo are recorded too. The script hands off to ROS with `exec`;
+ROS output continues in the log, and systemd records its eventual exit status.
+
+Set `ROBOT_LOG_DIR=/path/to/logs` to choose another directory (use a systemd
+environment override when running as a service). If the log directory cannot
+be written, startup prints a warning and continues with console/journal output.
+Previous runs are kept until removed manually.
+
 ## History
 
 The script that was found running on the Pi (uncommitted, ~/startup.sh)
