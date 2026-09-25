@@ -29,6 +29,11 @@ def generate_launch_description():
       'api_url', default_value='https://robo-web-ebon.vercel.app',
       description='robo-web base URL; heartbeat POSTs to <api_url>/api/heartbeat',
    )
+   lidar = LaunchConfiguration('lidar')
+   lidar_arg = DeclareLaunchArgument(
+      'lidar', default_value='true', choices=['true', 'false'],
+      description='autonomous mode only: run the RPLidar C1 driver (+ hot-plug watchdog)',
+   )
    is_teleop = IfCondition(PythonExpression(["'", mode, "' == 'teleop'"]))
    is_autonomous = IfCondition(PythonExpression(["'", mode, "' == 'autonomous'"]))
 
@@ -121,10 +126,68 @@ def generate_launch_description():
    if ublox_dir is not None:
       autonomous_nodes += [gps_main_node, gps_ntrip_node]
 
+   # --- lidar (RPLidar C1) ---------------------------------------------------
+   # sllidar_ros2 driver on /dev/rplidar -> /scan (frame lidar_link); params in
+   # config/lidar.yaml. Autonomous mode only, and `lidar:=false` disables it.
+   # Hot-plug: sllidar_node exits when the port is missing at startup, so
+   # respawn keeps retrying every ~3 s until the lidar is plugged in. It does
+   # NOT exit when unplugged mid-run (spins on read timeouts), so
+   # lidar_watchdog SIGINTs it once /scan is silent for 5 s and respawn then
+   # reopens the re-plugged device. Guarded like ublox_dgnss so launch still
+   # works where the driver isn't built.
+   use_lidar = IfCondition(PythonExpression(
+      ["'", mode, "' == 'autonomous' and '", lidar, "' == 'true'"]))
+   lidar_params = os.path.join(get_package_share_directory('my_bringup'), 'config', 'lidar.yaml')
+   try:
+      get_package_share_directory('sllidar_ros2')
+      lidar_available = True
+   except PackageNotFoundError:
+      lidar_available = False
+      print('[master_launch] sllidar_ros2 not found; autonomous mode has no lidar (/scan)')
+
+   lidar_node = Node(
+      package='sllidar_ros2',
+      executable='sllidar_node',
+      name='sllidar_node',
+      respawn=True,
+      respawn_delay=3.0,
+      output='screen',
+      parameters=[lidar_params],
+      remappings=[('scan', '/scan')],
+      condition=use_lidar,
+   )
+
+   # Same stale-build guard as heartbeat_node above.
+   try:
+      from ament_index_python.packages import get_package_prefix
+      _wd_exe = os.path.join(get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'lidar_watchdog')
+      watchdog_available = os.path.exists(_wd_exe)
+   except Exception:  # noqa: BLE001
+      watchdog_available = False
+
+   lidar_watchdog = Node(
+      package='my_bringup',
+      executable='lidar_watchdog',
+      name='lidar_watchdog',
+      respawn=True,
+      respawn_delay=3.0,
+      output='screen',
+      parameters=[lidar_params],
+      condition=use_lidar,
+   )
+
+   if lidar_available:
+      autonomous_nodes += [lidar_node]
+      if watchdog_available:
+         autonomous_nodes += [lidar_watchdog]
+      else:
+         print('[master_launch] lidar_watchdog executable not found (stale build?); lidar will not recover from a mid-run unplug')
+
    return LaunchDescription([
         mode_arg,
         robot_id_arg,
         api_url_arg,
+        lidar_arg,
         *([heartbeat_node] if heartbeat_available else []),
         joy_node, 
         control_node, 
