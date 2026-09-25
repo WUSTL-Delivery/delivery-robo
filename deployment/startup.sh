@@ -72,8 +72,14 @@ fi
 # Runs every boot, not only after a pull: a Pi that pulled before the
 # submodule existed still has an empty directory. Bounded + non-fatal, like
 # the fetch above. A submodule that was just populated forces a rebuild.
+# Only the paths registered in .gitmodules: the repo also carries gitlinks
+# with no .gitmodules entry (librealsense, ublox_dgnss, sim/src/serial), and a
+# bare `git submodule update` aborts on the first of those with
+# "fatal: No url found for submodule path ..." before fetching anything.
 if [ -f "$REPO/.gitmodules" ]; then
-  if timeout 60 git submodule update --init --recursive 2>&1; then
+  mapfile -t SUBMODULE_PATHS < <(git config -f "$REPO/.gitmodules" --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
+  if [ "${#SUBMODULE_PATHS[@]}" -gt 0 ] && \
+     timeout 60 git submodule update --init --recursive -- "${SUBMODULE_PATHS[@]}" 2>&1; then
     log "submodules up to date"
   else
     log "WARNING: submodule update failed (offline?) — continuing with what's on disk"
