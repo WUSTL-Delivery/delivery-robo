@@ -74,8 +74,14 @@ fi
 SUBMODULE=ros2_ws/src/delivery-autonomy
 if [ -f .gitmodules ]; then
   SUB_BEFORE=$(git -C "$SUBMODULE" rev-parse HEAD 2>/dev/null || echo none)
+  # Only the paths registered in .gitmodules: the repo also carries gitlinks with no
+  # .gitmodules entry (librealsense, rplidar_ros, ublox_dgnss, sim/src/serial), and a bare
+  # `git submodule update` aborts on the first of those with "fatal: No url found for
+  # submodule path ..." before cloning anything.
+  mapfile -t SUBMODULE_PATHS < <(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
   # 180 s: the first init clones the repo (a few MB of meshes and history); later updates are instant.
-  if timeout 180 git submodule update --init --recursive 2>&1; then
+  if [ "${#SUBMODULE_PATHS[@]}" -gt 0 ] && \
+     timeout 180 git submodule update --init --recursive -- "${SUBMODULE_PATHS[@]}" 2>&1; then
     SUB_AFTER=$(git -C "$SUBMODULE" rev-parse HEAD 2>/dev/null || echo none)
     if [ "$SUB_BEFORE" != "$SUB_AFTER" ]; then
       log "submodule delivery-autonomy $SUB_BEFORE -> ${SUB_AFTER:0:7}, will rebuild"; REBUILD=1
