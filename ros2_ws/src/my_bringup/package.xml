@@ -13,6 +13,8 @@
   <exec_depend>sllidar_ros2</exec_depend>
   <!-- lidar self-hit filter; sudo apt install ros-jazzy-laser-filters -->
   <exec_depend>laser_filters</exec_depend>
+  <!-- Intel RealSense driver; sudo apt install ros-jazzy-realsense2-camera -->
+  <exec_depend>realsense2_camera</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
