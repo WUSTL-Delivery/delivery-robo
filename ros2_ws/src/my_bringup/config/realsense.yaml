@@ -48,3 +48,28 @@ camera:
     reconnect_timeout: 6.0
     initial_reset: false
 
+# my_bringup/depth_obstacles.py: depth image -> /camera/obstacles (PointCloud2,
+# depth optical frame) + /camera/scan (LaserScan, base_link) for the costmap.
+# Heights are measured in ground_frame, where z = 0 is the floor.
+depth_obstacles:
+  ros__parameters:
+    depth_topic: /camera/depth/image_rect_raw
+    camera_info_topic: /camera/depth/camera_info
+    cloud_topic: /camera/obstacles
+    scan_topic: /camera/scan
+    ground_frame: base_footprint
+    scan_frame: base_link
+    depth_scale: 0.001            # 16UC1 depth is millimetres
+    pixel_stride: 4               # 640x480 -> 160x120 = 19.2k points/frame
+    min_depth: 0.2                # m, optical z; D4xx min-Z is ~0.2-0.3 at 640x480
+    max_depth: 4.0                # m; depth noise grows ~quadratically past this
+    min_obstacle_height: 0.05     # m above ground; lower = floor (free space)
+    max_obstacle_height: 1.0      # m; above this the robot fits under it
+    angle_min: -1.5708            # rad; scan covers +/-90 deg, NaN outside the FOV
+    angle_max: 1.5708
+    angle_increment: 0.008727     # 0.5 deg
+    range_min: 0.05
+    range_max: 4.0                # costmap obstacle_max_range must be < this
+                                  # (known-free +inf bins are sent as range_max)
+    min_hit_points: 3             # 3rd-nearest point per bin: one speckle is not a hit
+    free_min_points: 3            # floor points needed to call a bin free (+inf); 0 = never

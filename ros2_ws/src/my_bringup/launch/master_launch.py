@@ -260,6 +260,30 @@ def generate_launch_description():
       print('[master_launch] realsense2_camera not found; no depth camera '
             '(sudo apt install ros-jazzy-realsense2-camera)')
 
+   # depth -> /camera/obstacles (PointCloud2) + /camera/scan (LaserScan) for
+   # the costmap, floor removed (my_bringup/depth_obstacles.py). Same
+   # stale-build guard as heartbeat_node; it idles until depth + TF arrive.
+   try:
+      from ament_index_python.packages import get_package_prefix
+      _do_exe = os.path.join(get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'depth_obstacles')
+      depth_obstacles_available = os.path.exists(_do_exe)
+   except Exception:  # noqa: BLE001
+      depth_obstacles_available = False
+   if realsense_nodes and depth_obstacles_available:
+      realsense_nodes.append(Node(
+         package='my_bringup',
+         executable='depth_obstacles',
+         name='depth_obstacles',
+         respawn=True,
+         respawn_delay=3.0,
+         output='screen',
+         parameters=[os.path.join(get_package_share_directory('my_bringup'),
+                                  'config', 'realsense.yaml')],
+         condition=use_realsense,
+      ))
+   elif realsense_nodes:
+      print('[master_launch] depth_obstacles executable not found (stale build?); '
+            'no /camera/scan or /camera/obstacles')
 
    return LaunchDescription([
         mode_arg,

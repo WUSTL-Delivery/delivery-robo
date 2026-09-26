@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'heartbeat_node = my_bringup.heartbeat_node:main',
             'lidar_watchdog = my_bringup.lidar_watchdog:main',
+            'depth_obstacles = my_bringup.depth_obstacles:main',
         ],
     },
 )
