@@ -2,8 +2,12 @@
 # Boot script for the delivery robot Pi (user: delivery, host: raspi).
 # On every start: fetch the repo, rebuild if anything changed, read
 # robot_config.yaml, then launch master_launch.py in the configured mode
-# (teleop / autonomous). Designed to be run by systemd (see robot.service) but works
+# (teleop / autonomous / autonomy). Designed to be run by systemd (see robot.service) but works
 # fine by hand: ~/delivery-robo/deployment/startup.sh
+#
+# Laptop test with the Gazebo sim instead of the robot (config `mode: autonomy`, `sim: true`), from
+# inside delivery-autonomy's `nix develop` so Gazebo and the autonomy Python deps are there:
+#   ROS_SETUP= REPO=<clone> BRANCH=<branch> ROBOT_CONFIG=<sim config> <clone>/deployment/startup.sh
 #
 # Failure behavior is deliberately "start anyway": no network -> skip the pull;
 # build fails -> fall back to the last good install. The robot should come up
@@ -44,12 +48,24 @@ run_logged() {
 REPO="${REPO:-$HOME/delivery-robo}"
 WS="$REPO/ros2_ws"
 BRANCH="${BRANCH:-main}"
-ROS_SETUP=/opt/ros/jazzy/setup.bash
+# ROS_SETUP= (empty) keeps the ROS already in the environment, e.g. delivery-autonomy's
+# `nix develop` shell when testing with the sim on a laptop.
+ROS_SETUP="${ROS_SETUP-/opt/ros/jazzy/setup.bash}"
 # Committed config, optionally shadowed by an untracked per-Pi override.
 CONFIG="$REPO/deployment/robot_config.yaml"
 [ -f "$REPO/deployment/robot_config.local.yaml" ] && CONFIG="$REPO/deployment/robot_config.local.yaml"
 CONFIG="${ROBOT_CONFIG:-$CONFIG}"
 
+# shellcheck disable=SC1090
+source_ros() {  # ROS_SETUP= (empty) keeps the ROS already in the environment
+  if [ -z "$ROS_SETUP" ]; then
+    log "ROS_SETUP is empty: using the ROS already in the environment (ROS_DISTRO=${ROS_DISTRO:-unset})"
+    return 0
+  fi
+  log "sourcing $ROS_SETUP"
+  source "$ROS_SETUP"
+  log "source $ROS_SETUP exit=$?"
+}
 log "startup beginning: script=$0 pid=$$ user=$(id -un) host=$(hostname) bash=$BASH_VERSION"
 log "working_directory=$PWD home=$HOME repo=$REPO workspace=$WS branch=$BRANCH"
 log "config=$CONFIG ros_setup=$ROS_SETUP PATH=$PATH"
@@ -117,22 +133,32 @@ else
   log "WARNING: fetch failed (exit=$fetch_status); see Git's error above — starting with the existing build; no fetch retry this run"
 fi
 
-# --- 1b. Sync submodules (vendored drivers, e.g. sllidar_ros2) --------------
-# Runs every boot, not only after a pull: a Pi that pulled before the
-# submodule existed still has an empty directory. Bounded + non-fatal, like
-# the fetch above. A submodule that was just populated forces a rebuild.
-# Only the paths registered in .gitmodules: the repo also carries gitlinks
-# with no .gitmodules entry (librealsense, ublox_dgnss, sim/src/serial), and a
-# bare `git submodule update` aborts on the first of those with
+# --- 1b. Sync submodules (delivery-autonomy, sllidar_ros2) -------------------
+# Runs every boot, not only after a pull: a Pi that pulled before a submodule
+# existed still has an empty directory. Bounded + non-fatal, like the fetch
+# above. Only the paths registered in .gitmodules: the repo also carries
+# gitlinks with no .gitmodules entry (librealsense, ublox_dgnss, sim/src/serial),
+# and a bare `git submodule update` aborts on the first of those with
 # "fatal: No url found for submodule path ..." before fetching anything.
+# Offline with an empty delivery-autonomy -> autonomy mode has no autonomy nodes
+# (master_launch warns and skips them); teleop is unaffected.
+AUTONOMY_SUBMODULE=ros2_ws/src/delivery-autonomy
+AUTONOMY_BEFORE=$(git -C "$REPO/$AUTONOMY_SUBMODULE" rev-parse HEAD 2>/dev/null || echo none)
 if [ -f "$REPO/.gitmodules" ]; then
   mapfile -t SUBMODULE_PATHS < <(git config -f "$REPO/.gitmodules" --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
+  # 180 s: the first init clones delivery-autonomy (a few MB of meshes and history).
   if [ "${#SUBMODULE_PATHS[@]}" -gt 0 ] && \
-     timeout 60 git submodule update --init --recursive -- "${SUBMODULE_PATHS[@]}" 2>&1; then
+     timeout 180 git submodule update --init --recursive -- "${SUBMODULE_PATHS[@]}" 2>&1; then
     log "submodules up to date"
   else
     log "WARNING: submodule update failed (offline?) — continuing with what's on disk"
   fi
+fi
+# A moved delivery-autonomy pin -> rebuild (its packages are not named after the submodule).
+AUTONOMY_AFTER=$(git -C "$REPO/$AUTONOMY_SUBMODULE" rev-parse HEAD 2>/dev/null || echo none)
+if [ "$AUTONOMY_BEFORE" != "$AUTONOMY_AFTER" ]; then
+  log "submodule delivery-autonomy $AUTONOMY_BEFORE -> ${AUTONOMY_AFTER:0:7}, will rebuild"
+  REBUILD=1
 fi
 # Newly initialized driver source that has never been built -> rebuild.
 for pkg in sllidar_ros2; do
@@ -144,17 +170,25 @@ done
 
 # --- 2. Build if updated or never built ------------------------------------
 stage "build"
+# --packages-ignore simulation: the Gazebo package inside delivery-autonomy needs nothing
+# the Pi lacks at build time, but it is useless there and slows the build. `sim: true`
+# (laptop testing, see robot_config.yaml) builds it.
+SIM=""
+[ -f "$CONFIG" ] && SIM=$(run_logged cfg_get sim)
+case "${SIM:-false}" in
+  true) SIM=true; BUILD_IGNORE=()
+        if [ ! -d "$WS/install/simulation" ]; then log "sim: true and simulation is not built, will rebuild"; REBUILD=1; fi ;;
+  false) SIM=false; BUILD_IGNORE=(--packages-ignore simulation) ;;
+  *) log "WARNING: sim must be true or false, got '$SIM'; using false"; SIM=false; BUILD_IGNORE=(--packages-ignore simulation) ;;
+esac
 if [ ! -f "$WS/install/setup.bash" ]; then
   log "rebuild required: $WS/install/setup.bash is missing"
   REBUILD=1
 fi
 if [ "$REBUILD" = 1 ]; then
   log "building ros2_ws..."
-  log "sourcing $ROS_SETUP for build"
-  # shellcheck disable=SC1090
-  source "$ROS_SETUP"
-  log "source $ROS_SETUP exit=$?"
-  if (run_logged cd "$WS" && run_logged colcon build --symlink-install); then
+  source_ros
+  if (run_logged cd "$WS" && run_logged colcon build --symlink-install "${BUILD_IGNORE[@]}"); then
     log "build ok"
   else
     build_status=$?
@@ -175,16 +209,23 @@ else
 fi
 MODE="${MODE:-teleop}"
 case "$MODE" in
-  teleop|autonomous) ;;
+  teleop|autonomous|autonomy) ;;
   *) log "WARNING: unknown mode '$MODE', falling back to teleop"; MODE=teleop ;;
 esac
+[ "$SIM" = true ] && [ "$MODE" != autonomy ] && log "WARNING: sim: true only applies to mode: autonomy; ignored in $MODE"
+
+# Optional: pin the DDS domain so the robot does not share domain 0 with everything else on
+# the WiFi it happens to join. Unset in the config = leave ROS_DOMAIN_ID as the environment has it.
+DOMAIN=""
+[ -f "$CONFIG" ] && DOMAIN=$(cfg_get ros_domain_id)
+if [ -n "$DOMAIN" ]; then
+  export ROS_DOMAIN_ID="$DOMAIN"
+  log "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
+fi
 
 # --- 4. Launch -------------------------------------------------------------
 stage "ROS environment"
-log "sourcing $ROS_SETUP"
-# shellcheck disable=SC1090
-source "$ROS_SETUP"
-log "source $ROS_SETUP exit=$?"
+source_ros
 log "sourcing $WS/install/setup.bash"
 # shellcheck disable=SC1090
 source "$WS/install/setup.bash"
@@ -192,7 +233,7 @@ log "source $WS/install/setup.bash exit=$?"
 run_logged command -v ros2
 stage "ROS launch"
 announce booting launching
-log "launching my_bringup master_launch.py mode:=$MODE robot_id:=$ROBOT_ID api_url:=$API_URL"
+log "launching my_bringup master_launch.py mode:=$MODE sim:=$SIM robot_id:=$ROBOT_ID api_url:=$API_URL"
 log "handing off to ros2 after ${SECONDS}s; launch stdout/stderr continue in this log"
-exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "robot_id:=$ROBOT_ID" \
+exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "sim:=$SIM" "robot_id:=$ROBOT_ID" \
   ${API_URL:+"api_url:=$API_URL"}

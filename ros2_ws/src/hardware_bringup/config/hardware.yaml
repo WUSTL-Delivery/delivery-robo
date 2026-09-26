@@ -1,0 +1,67 @@
+# Hardware calibration and drive-chain parameters for the hardware_bringup nodes.
+# Loaded by launch/drive.launch.py and launch/autonomy_real.launch.py.
+#
+# Values under /** are used by MORE THAN ONE node and must stay identical for all of them,
+# so they are declared once here. README.md "Calibration" says how to measure each number.
+
+/**:
+  ros__parameters:
+    wheelbase: 0.36322            # m, rear axle to front axle. URDF: 0.36322, HAL: 0.30. Tape-measure it.
+    min_speed_for_steer: 0.05     # m/s floor for the yaw-rate <-> steering conversion (stick steers at standstill)
+    max_steer_rad: 0.4363         # rad road-wheel limit = 25 deg, joystick_node's range
+
+arduino_bridge:
+  ros__parameters:
+    port: /dev/ttyUSB0            # use /dev/serial/by-id/usb-... so the u-blox cannot take ttyUSB0 on a reboot
+    baud_rate: 57600
+    arduino_reset_s: 2.0          # bootloader window after the port opens; nothing is sent before it
+    cmd_vel_topic: /cmd_vel_out
+    executed_topic: /cmd_vel_executed
+    odom_topic: /odom
+    ticks_topic: /wheel_ticks
+    odom_frame: odom
+    base_frame: base_link
+    command_hz: 20.0
+    encoder_poll_hz: 20.0
+    watchdog_timeout: 0.5         # s without a command before "m 0 <centre>" is sent
+    min_encoder_dt: 0.02          # replies closer than this are merged (firmware stalls bunch them)
+    max_encoder_dt: 0.5           # gaps longer than this are not differentiated across
+    servo_center_deg: 45.0        # joystick_node's STEER_ORIGIN. firmware/HAL say 90: resolve on the bench
+    servo_deg_per_rad: 57.2958    # servo deg per rad of road-wheel angle; 1:1 until measured; negative flips
+    servo_min_deg: 0.0
+    servo_max_deg: 180.0
+    pwm_per_mps: 73.3333          # 110 PWM / 1.5 m/s: the controller's V_LIMIT maps to joystick_node's MAX_PWM
+    pwm_limit: 110                # joystick_node's MAX_PWM (firmware accepts up to 255)
+    metres_per_tick: 0.001        # PLACEHOLDER. Push the robot 10 m, read /wheel_ticks, divide. Negative flips.
+
+joy_to_cmdvel:
+  ros__parameters:
+    joy_topic: /joy
+    output_topic: /cmd_vel_joy
+    axis_throttle: 1              # joystick_node: axes[1]
+    axis_steer: 0                 # joystick_node: axes[0]
+    invert_throttle: false
+    invert_steer: false
+    max_speed: 1.5                # m/s at full stick = pwm_limit / pwm_per_mps, i.e. joystick_node's top PWM
+    enable_button: 4              # deadman: LB on Xbox-class pads and L1 on PlayStation pads under joy_node
+                                  # (button 9 is a stick click there). VERIFY with `ros2 topic echo /joy`
+    require_enable_button: true   # false = stick always wins over autonomy (autonomy never drives)
+    joy_timeout: 1.0              # s without /joy before the joystick counts as gone
+    require_joystick: true        # no joystick -> publish zeros at top priority (robot held stopped)
+    publish_rate: 20.0
+
+gps_datum_tf:
+  ros__parameters:
+    gps_in_topic: /fix            # NavSatFix from ublox_dgnss. VERIFY with `ros2 topic list -t`
+    gps_out_topic: /gps/fix       # what state_estimation reads (gated, reliable QoS)
+    datum_topic: /gps/datum       # latched copy of the fix used as the datum
+    min_status: 0                 # ublox_dgnss status: -2 unknown (startup), -1 no fix, 0 fix,
+                                  # 1 differential/RTK corrections applied (it never emits 2). 1 = RTK only
+    utm_zone: 15
+    northern_hemisphere: true
+    planner_origin_x: 734856.4630941747   # global_planner.py true_origin_x
+    planner_origin_y: 4281187.006303415   # global_planner.py true_origin_y
+    map_frame: map
+    odom_frame: odom
+    wait_for_subscriber: true     # forward only once the EKF is listening, so its first fix is the datum
+    restamp: false                # true = stamp forwarded fixes with the node clock (if the driver's stamps are off)

@@ -110,10 +110,8 @@ void processBuffer() {
       arg1 = atof(argv1);
       arg2 = atof(argv2);
 
-      Serial.print("ddd Parsed - Vel: ");
-      Serial.print(arg1);
-      Serial.print(" | ddd Angle: ");
-      Serial.println(arg2);
+      // No debug echo here: at 20 Hz commands + 20 Hz encoder polls it used ~45% of the
+      // 57600-baud link and buried the reply to 'e' (see hardware_bringup/serial_protocol.py).
       if (cmd != '\0') runCommand();
       resetCommand();
     }

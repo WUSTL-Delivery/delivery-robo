@@ -32,14 +32,20 @@ So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
 ## Robot config (`deployment/robot_config.yaml`)
 
 ```yaml
-mode: teleop        # teleop | autonomous
+mode: teleop        # teleop | autonomous | autonomy
+sim: false          # laptop testing only, see "Testing with the sim" below
 robot_id: robo-1    # name shown on the robo-web dashboard
 api_url: https://robo-web-ebon.vercel.app   # robo-web base URL (no trailing slash)
+# ros_domain_id: 42 # optional: DDS domain for every node started at boot
 ```
 
 - `teleop` — wired joystick: `joy_node` + `joystick_control/joystick_node`
   (the setup verified working on the Pi).
-- `autonomous` — sensor stack: RTK GPS + NTRIP (`ublox_dgnss`), IMU.
+- `autonomous` — sensor stack only: RTK GPS + NTRIP (`ublox_dgnss`), IMU. Nothing drives.
+- `autonomy` — the full stack: sensors, `hardware_bringup` drive chain (joystick →
+  `twist_mux` → `arduino_bridge` → Arduino) and the `delivery-autonomy` nodes (GPS datum,
+  EKF, OSM planner, MPPI controller). The joystick overrides the controller whenever its
+  enable button is held. See [Autonomy mode](#autonomy-mode) below.
 
 The committed file is the default for every Pi. To change the mode on one
 robot without a git commit (a local edit to a tracked file would block the
@@ -54,7 +60,99 @@ The same switch works by hand:
   (see below). Fill in `api_url` with the Vercel URL of `../robo-web`.
 
 Note: the ros2_control drive stack (`launch_real_robot.launch.py` in `sim/`)
-is still launched manually.
+is still launched manually and must not run together with `mode: autonomy`: both open the
+Arduino's serial port.
+
+## Autonomy mode
+
+`mode: autonomy` runs `../plans/autonomy-hardware-integration.md`. What runs, in
+`ros2_ws/src/hardware_bringup` (read its `README.md` before the first drive; it has the bench
+checklist and the calibration procedure):
+
+| Node | Package | Role |
+|---|---|---|
+| `arduino_bridge` | hardware_bringup | only owner of the Arduino serial port: `/cmd_vel_out` → motor/servo, encoder → `/odom`, 0.5 s watchdog |
+| `joy_node` + `joy_to_cmdvel` | joy, hardware_bringup | joystick → `/cmd_vel_joy` while the enable button is held |
+| `twist_mux` | twist_mux (apt) | joystick (priority 100) over controller (10) → `/cmd_vel_out` |
+| `gps_datum_tf` | hardware_bringup | gates `/fix` → `/gps/fix`, publishes `map→odom` from the first fix |
+| `state_estimation`, `global_planning_server`, `controller_server` | autonomy (submodule) | the delivery-autonomy EKF, planner and MPPI controller with hardware parameters |
+| `imu_publisher`, ublox + NTRIP | imu_package, ublox_dgnss | as in `autonomous` |
+
+One-time setup on the Pi (as `delivery`):
+
+```sh
+cd ~/delivery-robo && git pull && git submodule update --init      # startup.sh also does this
+deployment/install_autonomy_deps.sh                                 # jax, osmnx, geopandas, joy, twist_mux ...
+cd ros2_ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install --packages-ignore simulation
+source install/setup.bash && ros2 run hardware_bringup bench_mppi   # MPPI must fit the 100 ms control tick
+```
+
+`install_autonomy_deps.sh` pip-installs into `~/.local` with `--break-system-packages`
+(PEP 668). Current `jax` needs numpy 2, so the whole numeric stack (numpy, scipy, pandas,
+shapely, pyproj, geopandas, osmnx) comes from pip as one consistent set; the apt copies stay
+installed for ROS but are shadowed for this user. Apt-built extensions such as
+`python3-opencv` stop importing under numpy 2; nothing in `ros2_ws` uses them.
+
+The planner downloads the OSM footway graph from Overpass on every start and caches it in
+`~/.cache/delivery_autonomy/cache` (the launch sets that as its working directory). Start it
+once while online; afterwards it starts from the cache.
+
+Datum rule: the EKF's `odom` origin and the `map→odom` transform both come from the first GPS
+fix the EKF receives, so **start (and restart) the stack with the robot stationary**.
+
+### Testing with the sim (laptop)
+
+`sim: true` (with `mode: autonomy`) runs the same boot path with delivery-autonomy's Gazebo sim in
+place of the robot: `startup.sh` also builds the `simulation` package, and `master_launch.py`
+starts `run_simulator.sh` (Gazebo + robot spawn + `ros_gz_bridge`) and `simulation.launch.py`
+(robot state publisher, ground truth, RViz) instead of the sensors and the drive chain. The
+autonomy nodes come from the same `autonomy_real.launch.py` as on the robot, with sim time, the
+sim's `/gps/fix`, `/imu/data` and `/odom`, the controller on the sim's `/cmd_vel`, and the fixed
+spawn-pose `map→odom` instead of `gps_datum_tf`. No joystick, `twist_mux` or bridge.
+
+Gazebo and the autonomy Python deps come from delivery-autonomy's Nix flake, not from
+`/opt/ros/jazzy`, so run the boot script inside its devshell with `ROS_SETUP=` (use the ROS
+already in the environment). Use a clone of this repo that is not your Jazzy workspace (the
+build goes to its `ros2_ws/install`), and a config outside git:
+
+```sh
+cat > /tmp/sim.yaml <<'EOF'
+mode: autonomy
+sim: true
+ros_domain_id: 57              # keep the sim off everyone else's domain
+robot_id: laptop-sim
+api_url: http://127.0.0.1:9    # don't report the laptop to the robo-web dashboard
+EOF
+cd ~/coding-projects/delivery-autonomy && nix develop --command \
+  nix run --impure github:nix-community/nixGL#nixGLIntel -- env ROS_SETUP= \
+  REPO=<clone> BRANCH=<branch> ROBOT_CONFIG=/tmp/sim.yaml QT_QPA_PLATFORM=xcb \
+  <clone>/deployment/startup.sh              # HEADLESS=1 hides the Gazebo window
+```
+
+`nixGLIntel` (nixGL's Mesa wrapper; it covers AMD too) is only for non-NixOS hosts such as
+Ubuntu/Pop!_OS: without it the Nix-built Gazebo and RViz find no GL driver (`Unable to create
+glx fbconfig`), and Gazebo segfaults as soon as the robot's camera and lidar start rendering.
+
+Then, in another `nix develop` shell with `ROS_DOMAIN_ID=57` and `<clone>/ros2_ws/install`
+sourced, send a goal with a node id from the planner's `Sample Node IDs for testing:` line:
+`python3 <clone>/ros2_ws/src/delivery-autonomy/src/autonomy/autonomy/behavior.py <node_id>`.
+
+### NTRIP credentials
+
+`master_launch.py` still carries the historical caster settings as defaults (they are in git
+history; rotate the password). To use new credentials without a commit, create the gitignored
+`deployment/ntrip.local.yaml`:
+
+```yaml
+host: 168.166.125.30
+port: 2101
+mountpoint: RTX_RTCM34
+username: <user>
+password: <password>
+use_https: false
+```
+
+Any key left out keeps the committed default.
 
 ## Status heartbeat (robo-web)
 
@@ -176,8 +274,12 @@ doesn't start twice.
 Things the Pi needs that no script installs yet — verify when reimaging:
 
 - pip: `adafruit-circuitpython-bno08x` (+ Blinka `board`/`busio`) for the IMU;
-  `pyserial` for the encoder node
-- apt/ROS: `ublox_dgnss` (+ ntrip client), `twist_mux`, `ros2_control` stack
+  `pyserial` for the serial nodes. `deployment/install_autonomy_deps.sh` covers the
+  autonomy-mode Python packages (`deployment/autonomy-requirements.txt`).
+- apt/ROS: `ublox_dgnss` (+ ntrip client), `twist_mux`, `joy`, `ros2_control` stack
+- serial ports: the Arduino and the u-blox can swap `ttyUSB` numbers across reboots. Point
+  `arduino_bridge`'s `port` (hardware_bringup `config/hardware.yaml`) at the stable
+  `/dev/serial/by-id/usb-...` symlink (`ls -l /dev/serial/by-id/`)
 - user groups: `dialout` (serial), `i2c`
 - the `serial` package must be built with
   `colcon build --packages-select serial --cmake-args -DCMAKE_POSITION_INDEPENDENT_CODE=ON`
