@@ -8,7 +8,9 @@
     base_footprint -> base_link -> lidar_link   (scan frame, fixed)
                                 -> imu_link     (imu_node stamps this, fixed)
                                 -> gps_link     (fixed)
-                                -> camera_link  (fixed, optional)
+                                -> camera_link  (RealSense mount, fixed; the
+                                                 driver adds camera_link ->
+                                                 camera_*_optical_frame)
                                 -> *_wheel / *_steering_link (moving joints)
 
   Moving joints (wheels, steering) only get TF once something publishes
@@ -37,6 +39,21 @@
   <xacro:property name="imu_y" value="0.0"/>
   <xacro:property name="imu_z" value="0.1"/>
   <xacro:property name="imu_yaw" value="0.0"/>
+
+  <!-- Intel RealSense depth camera. camera_link is the RealSense driver's own
+       root frame (x forward, y left, z up; origin at the depth module's left
+       imager, ~1.75 cm left of the camera body's centre on a D435). The driver
+       publishes camera_link -> camera_{depth,color}_optical_frame, so the pose
+       here is the only mount calibration. pitch > 0 tilts the camera DOWN
+       (REP-103: +pitch about +y).
+       Provisional (2026-09-26): same pose the placeholder camera_link had
+       (front edge of the chassis, 0.15 m above base_link, level). Measured
+       values come from TDM-6. -->
+  <xacro:property name="camera_x" value="0.4"/>
+  <xacro:property name="camera_y" value="0.0"/>
+  <xacro:property name="camera_z" value="0.15"/>
+  <xacro:property name="camera_pitch" value="0.0"/>
+  <xacro:property name="camera_yaw" value="0.0"/>
 
   <!-- ============================ Chassis ================================= -->
   <xacro:property name="chassis_length" value="0.8"/>
@@ -194,7 +211,7 @@
   <joint name="camera_joint" type="fixed">
     <parent link="base_link"/>
     <child link="camera_link"/>
-    <origin xyz="${chassis_length/2} 0 0.15" rpy="0 0 0"/>
+    <origin xyz="${camera_x} ${camera_y} ${camera_z}" rpy="0 ${camera_pitch} ${camera_yaw}"/>
   </joint>
 
 </robot>
