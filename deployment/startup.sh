@@ -143,7 +143,9 @@ fi
 # Offline with an empty delivery-autonomy -> autonomy mode has no autonomy nodes
 # (master_launch warns and skips them); teleop is unaffected.
 AUTONOMY_SUBMODULE=ros2_ws/src/delivery-autonomy
-AUTONOMY_BEFORE=$(git -C "$REPO/$AUTONOMY_SUBMODULE" rev-parse HEAD 2>/dev/null || echo none)
+# `none` until checked out: git -C on an empty submodule dir would report the superproject's HEAD.
+submodule_head() { if [ -e "$REPO/$1/.git" ]; then git -C "$REPO/$1" rev-parse HEAD 2>/dev/null || echo none; else echo none; fi; }
+AUTONOMY_BEFORE=$(submodule_head "$AUTONOMY_SUBMODULE")
 if [ -f "$REPO/.gitmodules" ]; then
   mapfile -t SUBMODULE_PATHS < <(git config -f "$REPO/.gitmodules" --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
   # 180 s: the first init clones delivery-autonomy (a few MB of meshes and history).
@@ -155,32 +157,35 @@ if [ -f "$REPO/.gitmodules" ]; then
   fi
 fi
 # A moved delivery-autonomy pin -> rebuild (its packages are not named after the submodule).
-AUTONOMY_AFTER=$(git -C "$REPO/$AUTONOMY_SUBMODULE" rev-parse HEAD 2>/dev/null || echo none)
+AUTONOMY_AFTER=$(submodule_head "$AUTONOMY_SUBMODULE")
 if [ "$AUTONOMY_BEFORE" != "$AUTONOMY_AFTER" ]; then
   log "submodule delivery-autonomy $AUTONOMY_BEFORE -> ${AUTONOMY_AFTER:0:7}, will rebuild"
   REBUILD=1
 fi
-# Newly initialized driver source that has never been built -> rebuild.
-for pkg in sllidar_ros2; do
-  if [ -f "$WS/src/$pkg/package.xml" ] && [ ! -d "$WS/install/$pkg" ]; then
-    log "$pkg source present but not installed, will rebuild"
-    REBUILD=1
-  fi
-done
 
 # --- 2. Build if updated or never built ------------------------------------
 stage "build"
 # --packages-ignore simulation: the Gazebo package inside delivery-autonomy needs nothing
 # the Pi lacks at build time, but it is useless there and slows the build. `sim: true`
-# (laptop testing, see robot_config.yaml) builds it.
+# (laptop testing, see robot_config.yaml) builds it and skips sllidar_ros2 instead: the lidar
+# is off in the sim, and the driver does not build on newer distros such as the sim's Lyrical
+# (ament_target_dependencies is gone), which would abort the whole build.
 SIM=""
 [ -f "$CONFIG" ] && SIM=$(run_logged cfg_get sim)
 case "${SIM:-false}" in
-  true) SIM=true; BUILD_IGNORE=()
+  true) SIM=true; BUILD_IGNORE=(--packages-ignore sllidar_ros2)
         if [ ! -d "$WS/install/simulation" ]; then log "sim: true and simulation is not built, will rebuild"; REBUILD=1; fi ;;
   false) SIM=false; BUILD_IGNORE=(--packages-ignore simulation) ;;
   *) log "WARNING: sim must be true or false, got '$SIM'; using false"; SIM=false; BUILD_IGNORE=(--packages-ignore simulation) ;;
 esac
+# Newly initialized driver source that has never been built -> rebuild (unless ignored above).
+for pkg in sllidar_ros2; do
+  [[ " ${BUILD_IGNORE[*]} " == *" $pkg "* ]] && continue
+  if [ -f "$WS/src/$pkg/package.xml" ] && [ ! -d "$WS/install/$pkg" ]; then
+    log "$pkg source present but not installed, will rebuild"
+    REBUILD=1
+  fi
+done
 if [ ! -f "$WS/install/setup.bash" ]; then
   log "rebuild required: $WS/install/setup.bash is missing"
   REBUILD=1
