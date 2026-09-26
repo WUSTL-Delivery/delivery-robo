@@ -1,0 +1,151 @@
+# =============================================================================
+#  costmap_lidar.example.yaml  --  EXAMPLE, NOT LAUNCHED  (TDM-17)
+# =============================================================================
+#
+#  Nav2 (ROS 2 Jazzy) local_costmap / global_costmap parameters that feed the
+#  RPLidar into an obstacle_layer + inflation_layer.
+#
+#  STATUS: reference / drop-in snippet only. No launch file in this repo loads
+#  this file yet, and it is not installed by my_bringup's setup.py. Copy the
+#  relevant sections into the real Nav2 params file when the costmap work
+#  lands (here, or in the delivery-autonomy MPPI stack).
+#
+#  Contracts this file relies on (keep in sync if any of them change):
+#    - scan topic   : /scan_filtered  (sensor_msgs/LaserScan, self-hits removed
+#                     by the Phase 3 scan filter)
+#    - scan frame   : lidar_link      (header.frame_id of /scan_filtered)
+#    - TF chain     : base_footprint -> base_link -> lidar_link  (robot URDF)
+#    - odom frame   : odom            (delivery-autonomy EKF broadcasts
+#                     odom -> base_link and publishes /state_estimation/odom)
+#    - global frame : map             (delivery-autonomy looks up map -> base_link)
+#
+#  NOTE on robot_base_frame: the ticket contract uses base_link, which is also
+#  the child frame delivery-autonomy's EKF publishes. If the odom TF is ever
+#  re-parented to base_footprint (REP-105 style), switch both costmaps to
+#  base_footprint -- the 2D costmap does not care about the 0.15 m z-offset.
+#
+#  Usage (once wired): pass it as a params file to nav2 costmap nodes, e.g.
+#    ros2 launch nav2_bringup navigation_launch.py \
+#      params_file:=<path>/costmap_lidar.example.yaml
+#  (merged with the controller/planner params of whichever stack is used).
+# =============================================================================
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      # --- frames -------------------------------------------------------------
+      global_frame: odom            # local costmap rolls with odometry (no map jumps)
+      robot_base_frame: base_link   # contract frame; see NOTE above
+      transform_tolerance: 0.3      # s; Pi is slow, be lenient on TF lookups
+
+      # --- timing -------------------------------------------------------------
+      update_frequency: 5.0         # Hz; scan-driven updates
+      publish_frequency: 2.0        # Hz; only for RViz/debug consumers
+
+      # --- geometry -----------------------------------------------------------
+      rolling_window: true          # window follows the robot
+      width: 6                      # m  (must be integer for Nav2)
+      height: 6                     # m
+      resolution: 0.05              # m/cell
+
+      # Robot footprint, in robot_base_frame. Taken from the sim chassis box
+      # (delivery-autonomy src/simulation/urdf/robot.urdf.xacro: 0.8 x 0.4 m,
+      # centred on base_link).
+      # TODO(TDM-13): confirm against the real chassis measurement (and
+      # whether base_link is actually at the chassis centre).
+      footprint: "[[0.4, 0.2], [0.4, -0.2], [-0.4, -0.2], [-0.4, 0.2]]"
+      footprint_padding: 0.03       # m
+
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      # --- obstacle layer: the lidar -----------------------------------------
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        footprint_clearing_enabled: true   # clear cells under the robot
+        observation_sources: scan          # space-separated list of source names
+        scan:
+          topic: /scan_filtered            # filtered scan (self-hits removed)
+          data_type: "LaserScan"
+          sensor_frame: lidar_link         # override/confirm header.frame_id
+          marking: true                    # hits add obstacles
+          clearing: true                   # raytrace free space up to hits
+          obstacle_max_range: 8.0          # m; ignore hits beyond this for marking
+          obstacle_min_range: 0.0          # m
+          raytrace_max_range: 10.0         # m; clear free space out to this
+          raytrace_min_range: 0.0          # m
+          # 2D lidar: height filters are effectively bypassed for LaserScan, but
+          # keep the window generous so a tilted mount is not silently dropped.
+          max_obstacle_height: 2.0         # m
+          min_obstacle_height: 0.0         # m
+          expected_update_rate: 0.0        # s; 0 = don't warn. Set ~0.2 once
+                                           # the scan rate is known (RPLidar ~10 Hz)
+          inf_is_valid: false              # inf ranges are not "free to max range"
+          observation_persistence: 0.0     # s; keep only the latest scan
+
+      # --- inflation layer ----------------------------------------------------
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.55             # m; > inscribed radius (0.2) + margin
+        cost_scaling_factor: 3.0           # higher = cost falls off faster
+
+      always_send_full_costmap: true
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      # --- frames -------------------------------------------------------------
+      global_frame: map             # delivery-autonomy's OSM-anchored map frame
+      robot_base_frame: base_link   # contract frame; see NOTE above
+      transform_tolerance: 0.3
+
+      # --- timing -------------------------------------------------------------
+      update_frequency: 1.0
+      publish_frequency: 1.0
+
+      # --- geometry -----------------------------------------------------------
+      # No static map layer: delivery-autonomy plans on an OSM waypoint graph,
+      # not an occupancy grid. So the global costmap is a large rolling window
+      # of lidar obstacles only. If a static map is added later, put
+      # "static_layer" first in `plugins` and set rolling_window: false.
+      rolling_window: true
+      width: 50                     # m
+      height: 50                    # m
+      resolution: 0.1               # m/cell (coarser than local to save CPU)
+      track_unknown_space: true
+
+      # Same footprint as the local costmap. TODO(TDM-13): confirm.
+      footprint: "[[0.4, 0.2], [0.4, -0.2], [-0.4, -0.2], [-0.4, 0.2]]"
+      footprint_padding: 0.03
+
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        footprint_clearing_enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan_filtered
+          data_type: "LaserScan"
+          sensor_frame: lidar_link
+          marking: true
+          clearing: true
+          obstacle_max_range: 8.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          expected_update_rate: 0.0
+          inf_is_valid: false
+          observation_persistence: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.55
+        cost_scaling_factor: 3.0
+
+      always_send_full_costmap: true

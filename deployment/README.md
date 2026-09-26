@@ -229,6 +229,28 @@ systemctl is-enabled robot.service      # "enabled" = starts on boot
 journalctl -u robot.service -f          # live logs (launch output goes here)
 ```
 
+Each run overwrites `~/.local/state/delivery-robo/latest-startup.log`, so the
+file always contains output from the latest startup:
+
+```sh
+tail -F ~/.local/state/delivery-robo/latest-startup.log
+cat ~/.local/state/delivery-robo/latest-startup.log   # share this when debugging
+```
+
+The log captures stdout and stderr from Git, colcon, ROS setup files, and the
+ROS launch, while keeping output in the terminal and journal. Timestamped
+stage markers and command exit codes show the repository state, fetch/merge
+results (including fetch timeouts), build decisions, config parsing, setup
+results, and heartbeat HTTP errors. Logging starts before fetching so failures
+to locate the repo are recorded too. The script hands off to ROS with `exec`;
+ROS output continues in the log, and systemd records its eventual exit status.
+
+Set `ROBOT_LOG_DIR=/path/to/logs` to choose another directory (use a systemd
+environment override when running as a service). If the log directory cannot
+be written, startup prints a warning and continues with console/journal output.
+Timestamped logs created by older versions are left in place; new runs reuse
+`latest-startup.log` without creating additional files.
+
 ## History
 
 The script that was found running on the Pi (uncommitted, ~/startup.sh)
@@ -276,4 +298,82 @@ install on the Pi:
 
 ```sh
 HOTSPOT_SSID='<ssid>' HOTSPOT_PSK='<password>' sudo -E deployment/wifi/install.sh
+```
+
+## RPLidar C1 (`/dev/rplidar` udev symlink)
+
+The SLAMTEC RPLidar C1 (USB-C to USB into the Pi) is a CP2102 USB-serial
+device (`10c4:ea60`, 460800 baud). `deployment/udev/99-rplidar.rules` gives
+it a stable `/dev/rplidar` symlink, so the `sllidar_ros2` driver never has to
+guess which `/dev/ttyUSBn` it got. The link appears on plug-in and vanishes
+on unplug — no reboot needed.
+
+Install (one-time per Pi, idempotent — re-run after editing the rule):
+
+```sh
+cd ~/delivery-robo
+sudo deployment/udev/install_udev.sh
+```
+
+It copies the rule to `/etc/udev/rules.d/`, runs
+`udevadm control --reload-rules` + `udevadm trigger`, and adds `delivery`
+to `dialout` (effective after re-login/reboot; the rule also sets
+`MODE=0666` so the port opens before that).
+
+Verify:
+
+```sh
+ls -l /dev/rplidar            # -> lrwxrwxrwx ... /dev/rplidar -> ttyUSB0
+udevadm info -q symlink -n /dev/ttyUSB0   # should list "rplidar"
+# unplug the C1: /dev/rplidar must disappear
+```
+
+### Pinning to the C1's serial (do this if any other CP2102 is attached)
+
+The default rule matches **any** CP2102. The IMU (BNO08x) is on I2C and the
+u-blox GPS enumerates as `ttyACM*`, so neither collides — but the wheel
+encoder's microcontroller shows up as `/dev/ttyUSB*`, and if its board uses a
+CP2102 (common on ESP32 boards) it would also get `/dev/rplidar`. Check with
+`lsusb` (look for more than one `10c4:ea60`). If so, pin the rule:
+
+1. Plug in only the C1, then read its serial:
+   ```sh
+   udevadm info -a -n /dev/ttyUSB0 | grep -m1 'ATTRS{serial}'
+   ```
+2. In `deployment/udev/99-rplidar.rules`, comment out RULE A, uncomment
+   RULE B and replace `REPLACE_WITH_C1_SERIAL` with that value.
+3. `sudo deployment/udev/install_udev.sh`, plug the other board back in, and
+   confirm `ls -l /dev/rplidar` still points at the C1's tty.
+
+Note: the wheel-encoder node defaults to `port:=/dev/ttyUSB0`; with the C1
+also plugged in, which device gets `ttyUSB0` depends on enumeration order,
+so pass the encoder its own port (or give it its own udev symlink).
+
+## Lidar -> costmap
+
+`ros2_ws/src/my_bringup/config/costmap_lidar.example.yaml` is an **example, not
+launched** Nav2 (Jazzy) params snippet for when costmap work starts (here or in
+delivery-autonomy's MPPI stack). It defines `local_costmap` (global frame
+`odom`) and `global_costmap` (global frame `map`), each with an
+`obstacle_layer` + `inflation_layer` fed by one observation source `scan`:
+`/scan_filtered` (LaserScan, `sensor_frame: lidar_link`), marking + clearing,
+`obstacle_max_range: 8.0`, `raytrace_max_range: 10.0`,
+`robot_base_frame: base_link`. The footprint is the sim chassis (0.8 x 0.4 m)
+until TDM-13 confirms the real one. No launch file loads it — copy the
+sections into the real Nav2 params file when wiring it up.
+
+What the robot publishes for Nav2 (both modes, from `master_launch.py`, while
+the C1 is plugged in; `lidar:=false` turns it off):
+
+- `/scan`: raw `sensor_msgs/LaserScan` from `sllidar_node`, ~10 Hz, frame `lidar_link`
+- `/scan_filtered`: the same scan with the robot body removed (laser_filters)
+- TF `base_footprint -> base_link -> lidar_link` from `robot_state_publisher`
+
+To check that Nav2 really builds a costmap from it (robot-centred, no odometry
+needed), run next to the robot stack and view `/costmap` in RViz as a
+Map display with Fixed Frame `base_link`:
+
+```bash
+sudo apt install ros-jazzy-nav2-costmap-2d ros-jazzy-nav2-lifecycle-manager   # once
+ros2 launch my_bringup costmap_check.launch.py            # or scan_topic:=/scan
 ```

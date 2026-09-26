@@ -1,3 +1,6 @@
 [submodule "ros2_ws/src/delivery-autonomy"]
 	path = ros2_ws/src/delivery-autonomy
 	url = https://github.com/sebtheiler/delivery-autonomy.git
+[submodule "ros2_ws/src/sllidar_ros2"]
+	path = ros2_ws/src/sllidar_ros2
+	url = https://github.com/Slamtec/sllidar_ros2

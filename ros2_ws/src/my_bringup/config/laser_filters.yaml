@@ -1,0 +1,43 @@
+# laser_filters scan_to_scan_filter_chain config (TDM-16).
+# Input /scan (frame lidar_link) -> output /scan_filtered, with the robot's
+# own body removed. Format follows ros-perception/laser_filters (ros2 branch)
+# examples/box_filter_example.yaml and range_filter_example.yaml.
+#
+# Requires: sudo apt install ros-jazzy-laser-filters
+#
+# Filters run in order: filter1, filter2, ... Removed returns become NaN,
+# which Nav2 costmaps / slam treat as "no return".
+scan_to_scan_filter_chain:
+  ros__parameters:
+    # 1) Chassis self-hits. Box is expressed in base_link, so it needs the
+    #    base_link -> lidar_link TF (robot_description) to be up.
+    #    Sim chassis is 0.8 x 0.4 x 0.2 m centred on base_link; +5 cm pad
+    #    each side -> x +/-0.45, y +/-0.25. z is extended upward to 1.0 m so
+    #    any return inside the footprint at scan height (mast, GPS pole,
+    #    cable loops) is also dropped regardless of lidar mount height.
+    # TODO(TDM-13): replace with measured dimensions of the real chassis and
+    #   any structures in the scan plane (mast / GPS pole / antenna). If a
+    #   structure sticks out past the footprint, add another
+    #   LaserScanBoxFilter (filter3, ...) for it rather than growing this box.
+    filter1:
+      name: chassis_box
+      type: laser_filters/LaserScanBoxFilter
+      params:
+        box_frame: base_link
+        min_x: -0.45
+        max_x: 0.45
+        min_y: -0.25
+        max_y: 0.25
+        min_z: -0.15
+        max_z: 1.0
+        invert: false   # false = remove points INSIDE the box
+
+    # 2) Near-field junk: anything closer than 0.15 m to the lidar is a
+    #    self-hit / dust / mount reflection. Dropped returns become NaN.
+    filter2:
+      name: min_range
+      type: laser_filters/LaserScanRangeFilter
+      params:
+        use_message_range_limits: false
+        lower_threshold: 0.15
+        upper_threshold: 100000.0

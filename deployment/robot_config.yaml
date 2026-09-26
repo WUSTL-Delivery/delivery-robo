@@ -3,11 +3,13 @@
 # file to deployment/robot_config.local.yaml (gitignored) and edit that.
 
 # Which stack master_launch.py brings up:
-#   teleop     - wired joystick teleop (joy_node + joystick_control), no sensors
-#   autonomous - sensor stack only (RTK GPS + NTRIP, IMU); nothing drives the motors
+#   teleop     - wired joystick teleop (joy_node + joystick_control)
+#   autonomous - sensor stack (RTK GPS + NTRIP, IMU); nothing drives the motors
 #   autonomy   - the full delivery-autonomy stack on the robot: sensors + arduino_bridge +
 #                twist_mux + joystick override + EKF/planner/MPPI controller
 #                (ros2_ws/src/hardware_bringup, see its README.md before the first drive)
+# Every mode also runs the robot model TF and the RPLidar C1 (/scan, /scan_filtered)
+# whenever the lidar is plugged in (not with sim: true, where Gazebo provides both).
 mode: teleop
 
 # Laptop testing only; keep false on the robot. true (mode: autonomy only) replaces the sensors and
