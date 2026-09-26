@@ -33,6 +33,7 @@ So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
 
 ```yaml
 mode: teleop        # teleop | autonomous | autonomy
+sim: false          # laptop testing only, see "Testing with the sim" below
 robot_id: robo-1    # name shown on the robo-web dashboard
 api_url: https://robo-web-ebon.vercel.app   # robo-web base URL (no trailing slash)
 # ros_domain_id: 42 # optional: DDS domain for every node started at boot
@@ -98,6 +99,43 @@ once while online; afterwards it starts from the cache.
 
 Datum rule: the EKF's `odom` origin and the `map→odom` transform both come from the first GPS
 fix the EKF receives, so **start (and restart) the stack with the robot stationary**.
+
+### Testing with the sim (laptop)
+
+`sim: true` (with `mode: autonomy`) runs the same boot path with delivery-autonomy's Gazebo sim in
+place of the robot: `startup.sh` also builds the `simulation` package, and `master_launch.py`
+starts `run_simulator.sh` (Gazebo + robot spawn + `ros_gz_bridge`) and `simulation.launch.py`
+(robot state publisher, ground truth, RViz) instead of the sensors and the drive chain. The
+autonomy nodes come from the same `autonomy_real.launch.py` as on the robot, with sim time, the
+sim's `/gps/fix`, `/imu/data` and `/odom`, the controller on the sim's `/cmd_vel`, and the fixed
+spawn-pose `map→odom` instead of `gps_datum_tf`. No joystick, `twist_mux` or bridge.
+
+Gazebo and the autonomy Python deps come from delivery-autonomy's Nix flake, not from
+`/opt/ros/jazzy`, so run the boot script inside its devshell with `ROS_SETUP=` (use the ROS
+already in the environment). Use a clone of this repo that is not your Jazzy workspace (the
+build goes to its `ros2_ws/install`), and a config outside git:
+
+```sh
+cat > /tmp/sim.yaml <<'EOF'
+mode: autonomy
+sim: true
+ros_domain_id: 57              # keep the sim off everyone else's domain
+robot_id: laptop-sim
+api_url: http://127.0.0.1:9    # don't report the laptop to the robo-web dashboard
+EOF
+cd ~/coding-projects/delivery-autonomy && nix develop --command \
+  nix run --impure github:nix-community/nixGL#nixGLIntel -- env ROS_SETUP= \
+  REPO=<clone> BRANCH=<branch> ROBOT_CONFIG=/tmp/sim.yaml QT_QPA_PLATFORM=xcb \
+  <clone>/deployment/startup.sh              # HEADLESS=1 hides the Gazebo window
+```
+
+`nixGLIntel` (nixGL's Mesa wrapper; it covers AMD too) is only for non-NixOS hosts such as
+Ubuntu/Pop!_OS: without it the Nix-built Gazebo and RViz find no GL driver (`Unable to create
+glx fbconfig`), and Gazebo segfaults as soon as the robot's camera and lidar start rendering.
+
+Then, in another `nix develop` shell with `ROS_DOMAIN_ID=57` and `<clone>/ros2_ws/install`
+sourced, send a goal with a node id from the planner's `Sample Node IDs for testing:` line:
+`python3 <clone>/ros2_ws/src/delivery-autonomy/src/autonomy/autonomy/behavior.py <node_id>`.
 
 ### NTRIP credentials
 

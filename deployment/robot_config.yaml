@@ -10,6 +10,11 @@
 #                (ros2_ws/src/hardware_bringup, see its README.md before the first drive)
 mode: teleop
 
+# Laptop testing only; keep false on the robot. true (mode: autonomy only) replaces the sensors and
+# the drive chain with delivery-autonomy's Gazebo sim, so it needs Gazebo: run startup.sh inside
+# delivery-autonomy's `nix develop` with ROS_SETUP= (deployment/README.md, "Testing with the sim").
+sim: false
+
 # DDS domain for every node started at boot (0-101). Leave commented to keep the default
 # (domain 0, shared with every other ROS 2 machine on the same network).
 # ros_domain_id: 42

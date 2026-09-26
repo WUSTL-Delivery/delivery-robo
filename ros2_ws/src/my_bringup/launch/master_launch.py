@@ -1,6 +1,6 @@
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -17,6 +17,10 @@ from ament_index_python.packages import get_package_share_directory, PackageNotF
 # autonomy   sensors + hardware_bringup drive chain (joystick -> twist_mux -> arduino_bridge)
 #            + the delivery-autonomy nodes (gps datum, EKF, planner, MPPI controller).
 #            The joystick overrides the controller at any time while its enable button is held.
+#
+# sim:=true (autonomy only, laptop testing) swaps the sensors and the drive chain for the Gazebo
+# sim in the delivery-autonomy submodule; the autonomy nodes are the same. Needs Gazebo, i.e.
+# delivery-autonomy's `nix develop` shell. Never on the robot.
 
 # NTRIP caster settings for the ublox_dgnss ntrip client. The committed values are the
 # historical ones (they are in git history already). deployment/ntrip.local.yaml (gitignored,
@@ -74,6 +78,14 @@ def generate_launch_description():
       description='teleop = wired joystick control; autonomous = sensor stack only (GPS/NTRIP/IMU); '
                   'autonomy = sensors + drive bridge + delivery-autonomy with joystick override',
    )
+   sim = LaunchConfiguration('sim')
+   sim_arg = DeclareLaunchArgument(
+      'sim',
+      default_value='false',
+      choices=['true', 'false'],
+      description='autonomy mode only: the delivery-autonomy Gazebo sim replaces the sensors and the '
+                  'drive chain (laptop testing inside its nix develop shell; never on the robot)',
+   )
    robot_id = LaunchConfiguration('robot_id')
    api_url = LaunchConfiguration('api_url')
    robot_id_arg = DeclareLaunchArgument(
@@ -85,9 +97,12 @@ def generate_launch_description():
       description='robo-web base URL; heartbeat POSTs to <api_url>/api/heartbeat',
    )
    is_teleop = IfCondition(PythonExpression(["'", mode, "' == 'teleop'"]))
-   # sensors run in both non-teleop modes
-   is_sensors = IfCondition(PythonExpression(["'", mode, "' in ('autonomous', 'autonomy')"]))
+   # sensors run in both non-teleop modes, except when the sim stands in for them
+   is_sensors = IfCondition(PythonExpression(
+      ["'", mode, "' == 'autonomous' or ('", mode, "' == 'autonomy' and '", sim, "' != 'true')"]))
    is_autonomy = IfCondition(PythonExpression(["'", mode, "' == 'autonomy'"]))
+   is_autonomy_real = IfCondition(PythonExpression(["'", mode, "' == 'autonomy' and '", sim, "' != 'true'"]))
+   is_autonomy_sim = IfCondition(PythonExpression(["'", mode, "' == 'autonomy' and '", sim, "' == 'true'"]))
 
    # --- heartbeat: both modes, reports status to robo-web ----------------
    # Guard: with --symlink-install this launch file is the *new* one even when
@@ -182,20 +197,50 @@ def generate_launch_description():
    if hw_dir is not None:
       autonomy_nodes.append(IncludeLaunchDescription(
           PythonLaunchDescriptionSource(os.path.join(hw_dir, 'launch', 'drive.launch.py')),
-          condition=is_autonomy,
+          condition=is_autonomy_real,
       ))
       try:
          get_package_share_directory('autonomy')
          autonomy_nodes.append(IncludeLaunchDescription(
              PythonLaunchDescriptionSource(os.path.join(hw_dir, 'launch', 'autonomy_real.launch.py')),
+             launch_arguments={'sim': sim}.items(),
              condition=is_autonomy,
          ))
       except PackageNotFoundError:
          print('[master_launch] autonomy package not found (submodule ros2_ws/src/delivery-autonomy not '
                'checked out or not built); autonomy mode is joystick-through-bridge only')
 
+   # --- sim (autonomy + sim:=true): Gazebo in place of the sensors and the drive chain ----
+   # run_simulator.sh (Gazebo, robot spawn, ros_gz_bridge) is not installed by the simulation
+   # package, so it runs from the submodule checkout; simulation.launch.py adds the robot state
+   # publisher, ground truth and RViz. HEADLESS=1 in the environment hides the Gazebo window.
+   sim_nodes = []
+   repo = _repo_root()
+   sim_script = os.path.join(repo or '', 'ros2_ws', 'src', 'delivery-autonomy', 'src', 'simulation',
+                             'scripts', 'run_simulator.sh')
+   try:
+      sim_dir = get_package_share_directory('simulation')
+   except PackageNotFoundError:
+      sim_dir = None
+   if sim_dir is None or not os.path.isfile(sim_script):
+      # the robot never builds the simulation package, so only complain when the sim was asked for
+      sim_nodes.append(LogInfo(
+         msg='[master_launch] WARNING: simulation package or run_simulator.sh not found; sim:=true has no '
+             'sim (startup.sh builds the simulation package only with sim: true)',
+         condition=is_autonomy_sim,
+      ))
+   else:
+      sim_nodes += [
+         ExecuteProcess(cmd=['bash', sim_script], name='gazebo', output='screen', condition=is_autonomy_sim),
+         IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(sim_dir, 'launch', 'simulation.launch.py')),
+            condition=is_autonomy_sim,
+         ),
+      ]
+
    return LaunchDescription([
         mode_arg,
+        sim_arg,
         robot_id_arg,
         api_url_arg,
         *([heartbeat_node] if heartbeat_available else []),
@@ -203,4 +248,5 @@ def generate_launch_description():
         control_node, 
         *sensor_nodes,
         *autonomy_nodes,
+        *sim_nodes,
     ])

@@ -5,6 +5,10 @@
 # (teleop / autonomous / autonomy). Designed to be run by systemd (see robot.service) but works
 # fine by hand: ~/delivery-robo/deployment/startup.sh
 #
+# Laptop test with the Gazebo sim instead of the robot (config `mode: autonomy`, `sim: true`), from
+# inside delivery-autonomy's `nix develop` so Gazebo and the autonomy Python deps are there:
+#   ROS_SETUP= REPO=<clone> BRANCH=<branch> ROBOT_CONFIG=<sim config> <clone>/deployment/startup.sh
+#
 # Failure behavior is deliberately "start anyway": no network -> skip the pull;
 # build fails -> fall back to the last good install. The robot should come up
 # in the field even when GitHub is unreachable.
@@ -15,13 +19,17 @@ set -o pipefail
 REPO="${REPO:-$HOME/delivery-robo}"
 WS="$REPO/ros2_ws"
 BRANCH="${BRANCH:-main}"
-ROS_SETUP=/opt/ros/jazzy/setup.bash
+# ROS_SETUP= (empty) keeps the ROS already in the environment, e.g. delivery-autonomy's
+# `nix develop` shell when testing with the sim on a laptop.
+ROS_SETUP="${ROS_SETUP-/opt/ros/jazzy/setup.bash}"
 # Committed config, optionally shadowed by an untracked per-Pi override.
 CONFIG="$REPO/deployment/robot_config.yaml"
 [ -f "$REPO/deployment/robot_config.local.yaml" ] && CONFIG="$REPO/deployment/robot_config.local.yaml"
 CONFIG="${ROBOT_CONFIG:-$CONFIG}"
 
 log() { echo "[startup] $*"; }
+# shellcheck disable=SC1090
+source_ros() { [ -z "$ROS_SETUP" ] || source "$ROS_SETUP"; }
 
 # Top-level "key: value" only; no yq/python dependency so boot can't fail on it.
 cfg_get() { sed -n "s/^[[:space:]]*$1:[[:space:]]*\([^#]*\).*/\1/p" "$CONFIG" | head -n1 | xargs; }
@@ -93,13 +101,20 @@ fi
 
 # --- 2. Build if updated or never built ------------------------------------
 # --packages-ignore simulation: the Gazebo package inside delivery-autonomy needs nothing
-# the Pi lacks at build time, but it is useless there and slows the build.
+# the Pi lacks at build time, but it is useless there and slows the build. `sim: true`
+# (laptop testing, see robot_config.yaml) builds it.
+SIM=""
+[ -f "$CONFIG" ] && SIM=$(cfg_get sim)
+case "${SIM:-false}" in
+  true) SIM=true; BUILD_IGNORE=(); [ -d "$WS/install/simulation" ] || REBUILD=1 ;;
+  false) SIM=false; BUILD_IGNORE=(--packages-ignore simulation) ;;
+  *) log "WARNING: sim must be true or false, got '$SIM'; using false"; SIM=false; BUILD_IGNORE=(--packages-ignore simulation) ;;
+esac
 [ -f "$WS/install/setup.bash" ] || REBUILD=1
 if [ "$REBUILD" = 1 ]; then
   log "building ros2_ws..."
-  # shellcheck disable=SC1090
-  source "$ROS_SETUP"
-  if (cd "$WS" && colcon build --symlink-install --packages-ignore simulation); then
+  source_ros
+  if (cd "$WS" && colcon build --symlink-install "${BUILD_IGNORE[@]}"); then
     log "build ok"
   else
     log "WARNING: build FAILED — falling back to the previous install"
@@ -119,6 +134,7 @@ case "$MODE" in
   teleop|autonomous|autonomy) ;;
   *) log "WARNING: unknown mode '$MODE', falling back to teleop"; MODE=teleop ;;
 esac
+[ "$SIM" = true ] && [ "$MODE" != autonomy ] && log "WARNING: sim: true only applies to mode: autonomy; ignored in $MODE"
 
 # Optional: pin the DDS domain so the robot does not share domain 0 with everything else on
 # the WiFi it happens to join. Unset in the config = leave ROS_DOMAIN_ID as the environment has it.
@@ -130,11 +146,10 @@ if [ -n "$DOMAIN" ]; then
 fi
 
 # --- 4. Launch -------------------------------------------------------------
-# shellcheck disable=SC1090
-source "$ROS_SETUP"
+source_ros
 # shellcheck disable=SC1090
 source "$WS/install/setup.bash"
 announce booting launching
-log "launching my_bringup master_launch.py mode:=$MODE robot_id:=$ROBOT_ID api_url:=$API_URL"
-exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "robot_id:=$ROBOT_ID" \
+log "launching my_bringup master_launch.py mode:=$MODE sim:=$SIM robot_id:=$ROBOT_ID api_url:=$API_URL"
+exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "sim:=$SIM" "robot_id:=$ROBOT_ID" \
   ${API_URL:+"api_url:=$API_URL"}
