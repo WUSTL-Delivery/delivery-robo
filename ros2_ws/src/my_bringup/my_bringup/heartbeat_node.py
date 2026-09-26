@@ -155,7 +155,7 @@ class Heartbeat(Node):
         except Exception as e:  # noqa: BLE001
             now = time.monotonic()
             if now - self.last_warn > 30:
-                self.get_logger().warn(f'heartbeat tick error: {e!r}')
+                self.get_logger().warning(f'heartbeat tick error: {e!r}')
                 self.last_warn = now
 
     def _tick(self):
@@ -175,7 +175,7 @@ class Heartbeat(Node):
             self.fail_count += 1
             now = time.monotonic()
             if now - self.last_warn > 30:  # throttle: hotspot outages are noisy
-                self.get_logger().warn(f'heartbeat POST failed ({self.fail_count}x): {e}')
+                self.get_logger().warning(f'heartbeat POST failed ({self.fail_count}x): {e}')
                 self.last_warn = now
 
 
