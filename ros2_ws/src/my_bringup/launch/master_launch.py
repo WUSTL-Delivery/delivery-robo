@@ -104,7 +104,7 @@ def generate_launch_description():
    realsense = LaunchConfiguration('realsense')
    realsense_arg = DeclareLaunchArgument(
       'realsense', default_value='true', choices=['true', 'false'],
-      description='both modes: run the Intel RealSense depth camera driver (/camera/color, /camera/depth)',
+      description='every mode except sim: run the Intel RealSense depth camera driver (/camera/color, /camera/depth)',
    )
    is_teleop = IfCondition(PythonExpression(["'", mode, "' == 'teleop'"]))
    # sensors run in both non-teleop modes, except when the sim stands in for them
@@ -360,8 +360,10 @@ def generate_launch_description():
    # default /camera/camera/...). Both modes, off with realsense:=false.
    # Hot-plug is handled by the driver itself (wait_for_device_timeout /
    # reconnect_timeout); respawn only covers a crash. Guarded like sllidar_ros2
-   # so launch still works where the driver isn't installed.
-   use_realsense = IfCondition(PythonExpression(["'", realsense, "' == 'true'"]))
+   # so launch still works where the driver isn't installed. Off with sim:=true
+   # (the Gazebo robot has its own camera topics).
+   use_realsense = IfCondition(PythonExpression(
+      ["'", realsense, "' == 'true' and not ('", mode, "' == 'autonomy' and '", sim, "' == 'true')"]))
    realsense_nodes = []
    try:
       get_package_share_directory('realsense2_camera')
