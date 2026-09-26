@@ -1,0 +1,18 @@
+# Command arbitration for the autonomy mode.
+# Joystick (100) beats the autonomy controller (10); each source drops out 0.5 s after it
+# stops publishing. Output: /cmd_vel_out -> arduino_bridge.
+#
+# use_stamped MUST be false: controller.py and joy_to_cmdvel publish plain geometry_msgs/Twist.
+# (sim/src/robo_courier/config/twist_mux.yaml says true and would silently drop both.)
+twist_mux:
+  ros__parameters:
+    use_stamped: false
+    topics:
+      navigation:
+        topic: cmd_vel_nav
+        timeout: 0.5
+        priority: 10
+      joystick:
+        topic: cmd_vel_joy
+        timeout: 0.5
+        priority: 100

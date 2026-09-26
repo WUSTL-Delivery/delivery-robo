@@ -3,9 +3,16 @@
 # file to deployment/robot_config.local.yaml (gitignored) and edit that.
 
 # Which stack master_launch.py brings up:
-#   teleop     - wired joystick teleop (joy_node + joystick_control)
-#   autonomous - sensor stack (RTK GPS + NTRIP, IMU)
+#   teleop     - wired joystick teleop (joy_node + joystick_control), no sensors
+#   autonomous - sensor stack only (RTK GPS + NTRIP, IMU); nothing drives the motors
+#   autonomy   - the full delivery-autonomy stack on the robot: sensors + arduino_bridge +
+#                twist_mux + joystick override + EKF/planner/MPPI controller
+#                (ros2_ws/src/hardware_bringup, see its README.md before the first drive)
 mode: teleop
+
+# DDS domain for every node started at boot (0-101). Leave commented to keep the default
+# (domain 0, shared with every other ROS 2 machine on the same network).
+# ros_domain_id: 42
 
 # Identity shown on the robo-web dashboard (../robo-web, deployed on Vercel).
 robot_id: robo-1

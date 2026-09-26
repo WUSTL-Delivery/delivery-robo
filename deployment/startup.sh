@@ -2,7 +2,7 @@
 # Boot script for the delivery robot Pi (user: delivery, host: raspi).
 # On every start: fetch the repo, rebuild if anything changed, read
 # robot_config.yaml, then launch master_launch.py in the configured mode
-# (teleop / autonomous). Designed to be run by systemd (see robot.service) but works
+# (teleop / autonomous / autonomy). Designed to be run by systemd (see robot.service) but works
 # fine by hand: ~/delivery-robo/deployment/startup.sh
 #
 # Failure behavior is deliberately "start anyway": no network -> skip the pull;
@@ -68,13 +68,32 @@ else
   log "fetch failed (offline?) — starting with the existing build"
 fi
 
+# --- 1b. Submodules (delivery-autonomy lives at ros2_ws/src/delivery-autonomy) ----
+# Bounded like the fetch. Offline with an empty submodule -> autonomy mode has no autonomy
+# nodes (master_launch warns and skips them); teleop is unaffected.
+SUBMODULE=ros2_ws/src/delivery-autonomy
+if [ -f .gitmodules ]; then
+  SUB_BEFORE=$(git -C "$SUBMODULE" rev-parse HEAD 2>/dev/null || echo none)
+  # 180 s: the first init clones the repo (a few MB of meshes and history); later updates are instant.
+  if timeout 180 git submodule update --init --recursive 2>&1; then
+    SUB_AFTER=$(git -C "$SUBMODULE" rev-parse HEAD 2>/dev/null || echo none)
+    if [ "$SUB_BEFORE" != "$SUB_AFTER" ]; then
+      log "submodule delivery-autonomy $SUB_BEFORE -> ${SUB_AFTER:0:7}, will rebuild"; REBUILD=1
+    fi
+  else
+    log "WARNING: submodule update failed (offline?) — using whatever is checked out"
+  fi
+fi
+
 # --- 2. Build if updated or never built ------------------------------------
+# --packages-ignore simulation: the Gazebo package inside delivery-autonomy needs nothing
+# the Pi lacks at build time, but it is useless there and slows the build.
 [ -f "$WS/install/setup.bash" ] || REBUILD=1
 if [ "$REBUILD" = 1 ]; then
   log "building ros2_ws..."
   # shellcheck disable=SC1090
   source "$ROS_SETUP"
-  if (cd "$WS" && colcon build --symlink-install); then
+  if (cd "$WS" && colcon build --symlink-install --packages-ignore simulation); then
     log "build ok"
   else
     log "WARNING: build FAILED — falling back to the previous install"
@@ -91,9 +110,18 @@ else
 fi
 MODE="${MODE:-teleop}"
 case "$MODE" in
-  teleop|autonomous) ;;
+  teleop|autonomous|autonomy) ;;
   *) log "WARNING: unknown mode '$MODE', falling back to teleop"; MODE=teleop ;;
 esac
+
+# Optional: pin the DDS domain so the robot does not share domain 0 with everything else on
+# the WiFi it happens to join. Unset in the config = leave ROS_DOMAIN_ID as the environment has it.
+DOMAIN=""
+[ -f "$CONFIG" ] && DOMAIN=$(cfg_get ros_domain_id)
+if [ -n "$DOMAIN" ]; then
+  export ROS_DOMAIN_ID="$DOMAIN"
+  log "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
+fi
 
 # --- 4. Launch -------------------------------------------------------------
 # shellcheck disable=SC1090

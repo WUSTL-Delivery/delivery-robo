@@ -10,14 +10,69 @@ from ament_index_python.packages import get_package_share_directory, PackageNotF
 # Selected by deployment/robot_config.yaml (via startup.sh), or by hand:
 #   ros2 launch my_bringup master_launch.py mode:=teleop
 #   ros2 launch my_bringup master_launch.py mode:=autonomous
+#   ros2 launch my_bringup master_launch.py mode:=autonomy
+#
+# teleop     joystick straight to the Arduino (joy_node + joystick_control). Unchanged.
+# autonomous sensors only (RTK GPS + NTRIP, IMU). Nothing drives.
+# autonomy   sensors + hardware_bringup drive chain (joystick -> twist_mux -> arduino_bridge)
+#            + the delivery-autonomy nodes (gps datum, EKF, planner, MPPI controller).
+#            The joystick overrides the controller at any time while its enable button is held.
+
+# NTRIP caster settings for the ublox_dgnss ntrip client. The committed values are the
+# historical ones (they are in git history already). deployment/ntrip.local.yaml (gitignored,
+# top-level "key: value" lines) overrides them key by key, so the credentials can be rotated
+# on the robot without a commit. See deployment/README.md.
+NTRIP_DEFAULTS = {
+    'use_https': 'false',
+    'host': '168.166.125.30',
+    'port': '2101',
+    'mountpoint': 'RTX_RTCM34',
+    'username': '/WashUroboticsDelivery2026',
+    'password': '$DeliveryWU197?',
+}
+
+
+def _repo_root():
+    """robotics/ checkout: $REPO, else derived from this file (symlink-install), else ~/delivery-robo."""
+    candidates = [os.environ.get('REPO')]
+    here = os.path.dirname(os.path.realpath(__file__))
+    candidates.append(os.path.abspath(os.path.join(here, '..', '..', '..', '..')))  # launch/ -> my_bringup -> src -> ros2_ws -> repo
+    candidates.append(os.path.expanduser('~/delivery-robo'))
+    for c in candidates:
+        if c and os.path.isfile(os.path.join(c, 'deployment', 'robot_config.yaml')):
+            return c
+    return None
+
+
+def _ntrip_settings():
+    settings = dict(NTRIP_DEFAULTS)
+    repo = _repo_root()
+    path = os.path.join(repo, 'deployment', 'ntrip.local.yaml') if repo else None
+    if path and os.path.isfile(path):
+        try:
+            import yaml
+            with open(path) as f:
+                override = yaml.safe_load(f) or {}
+            for key in settings:
+                if key in override and override[key] is not None:
+                    settings[key] = str(override[key]).lower() if key == 'use_https' else str(override[key])
+            print(f'[master_launch] NTRIP settings from {path}')
+        except Exception as exc:  # noqa: BLE001 - a bad override must not brick the boot
+            print(f'[master_launch] WARNING: could not read {path} ({exc}); using committed NTRIP defaults')
+    else:
+        print('[master_launch] NTRIP: no deployment/ntrip.local.yaml, using the committed defaults '
+              '(rotate the caster password and put the new one in that file)')
+    return settings
+
 
 def generate_launch_description():
    mode = LaunchConfiguration('mode')
    mode_arg = DeclareLaunchArgument(
       'mode',
       default_value='teleop',
-      choices=['teleop', 'autonomous'],
-      description='teleop = wired joystick control; autonomous = sensor stack (GPS/NTRIP/IMU)',
+      choices=['teleop', 'autonomous', 'autonomy'],
+      description='teleop = wired joystick control; autonomous = sensor stack only (GPS/NTRIP/IMU); '
+                  'autonomy = sensors + drive bridge + delivery-autonomy with joystick override',
    )
    robot_id = LaunchConfiguration('robot_id')
    api_url = LaunchConfiguration('api_url')
@@ -30,7 +85,9 @@ def generate_launch_description():
       description='robo-web base URL; heartbeat POSTs to <api_url>/api/heartbeat',
    )
    is_teleop = IfCondition(PythonExpression(["'", mode, "' == 'teleop'"]))
-   is_autonomous = IfCondition(PythonExpression(["'", mode, "' == 'autonomous'"]))
+   # sensors run in both non-teleop modes
+   is_sensors = IfCondition(PythonExpression(["'", mode, "' in ('autonomous', 'autonomy')"]))
+   is_autonomy = IfCondition(PythonExpression(["'", mode, "' == 'autonomy'"]))
 
    # --- heartbeat: both modes, reports status to robo-web ----------------
    # Guard: with --symlink-install this launch file is the *new* one even when
@@ -76,35 +133,28 @@ def generate_launch_description():
       condition=is_teleop,
    )
 
-   # --- autonomous: sensor stack ------------------------------------------
+   # --- sensors (autonomous + autonomy) ---------------------------------------
    # Resolved at load time, so guard it: teleop must still work on a Pi
    # where ublox_dgnss isn't built.
    try:
       ublox_dir = get_package_share_directory('ublox_dgnss')
    except PackageNotFoundError:
       ublox_dir = None
-      print('[master_launch] ublox_dgnss not found; autonomous mode has no GPS/NTRIP nodes')
+      print('[master_launch] ublox_dgnss not found; autonomous/autonomy modes have no GPS/NTRIP nodes')
 
    gps_main_node = IncludeLaunchDescription(
        PythonLaunchDescriptionSource(
            os.path.join(ublox_dir or '', 'launch', 'ublox_rover_hpposllh_navsatfix.launch.py')
        ),
-       condition=is_autonomous,
+       condition=is_sensors,
    )
 
    gps_ntrip_node = IncludeLaunchDescription(
        PythonLaunchDescriptionSource(
            os.path.join(ublox_dir or '', 'launch', 'ntrip_client.launch.py')
        ),
-       launch_arguments={
-           'use_https': 'false',
-           'host':'168.166.125.30',
-           'port': '2101',
-           'mountpoint':'RTX_RTCM34',
-           'username':'/WashUroboticsDelivery2026',
-           'password':'$DeliveryWU197?'
-       }.items(),
-       condition=is_autonomous,
+       launch_arguments=_ntrip_settings().items(),
+       condition=is_sensors,
    )
 
    imu_node = Node(
@@ -114,12 +164,35 @@ def generate_launch_description():
        respawn=True,
        respawn_delay=3.0,
        output='screen',
-       condition=is_autonomous,
+       condition=is_sensors,
    )
 
-   autonomous_nodes = [imu_node]
+   sensor_nodes = [imu_node]
    if ublox_dir is not None:
-      autonomous_nodes += [gps_main_node, gps_ntrip_node]
+      sensor_nodes += [gps_main_node, gps_ntrip_node]
+
+   # --- autonomy: drive chain + delivery-autonomy ------------------------------
+   # Same guard idea: a missing package must degrade, not abort the boot.
+   autonomy_nodes = []
+   try:
+      hw_dir = get_package_share_directory('hardware_bringup')
+   except PackageNotFoundError:
+      hw_dir = None
+      print('[master_launch] hardware_bringup not found; autonomy mode has no drive chain or autonomy nodes')
+   if hw_dir is not None:
+      autonomy_nodes.append(IncludeLaunchDescription(
+          PythonLaunchDescriptionSource(os.path.join(hw_dir, 'launch', 'drive.launch.py')),
+          condition=is_autonomy,
+      ))
+      try:
+         get_package_share_directory('autonomy')
+         autonomy_nodes.append(IncludeLaunchDescription(
+             PythonLaunchDescriptionSource(os.path.join(hw_dir, 'launch', 'autonomy_real.launch.py')),
+             condition=is_autonomy,
+         ))
+      except PackageNotFoundError:
+         print('[master_launch] autonomy package not found (submodule ros2_ws/src/delivery-autonomy not '
+               'checked out or not built); autonomy mode is joystick-through-bridge only')
 
    return LaunchDescription([
         mode_arg,
@@ -128,5 +201,6 @@ def generate_launch_description():
         *([heartbeat_node] if heartbeat_available else []),
         joy_node, 
         control_node, 
-        *autonomous_nodes
+        *sensor_nodes,
+        *autonomy_nodes,
     ])
