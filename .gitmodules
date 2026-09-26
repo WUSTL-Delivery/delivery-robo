@@ -1,3 +1,6 @@
 [submodule "ros2_ws/src/sllidar_ros2"]
 	path = ros2_ws/src/sllidar_ros2
 	url = https://github.com/Slamtec/sllidar_ros2
+[submodule "ros2_ws/src/ublox_dgnss"]
+	path = ros2_ws/src/ublox_dgnss
+	url = https://github.com/aussierobots/ublox_dgnss.git
