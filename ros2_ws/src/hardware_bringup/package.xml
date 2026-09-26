@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>hardware_bringup</name>
+  <version>0.1.0</version>
+  <description>
+    Glue between the real robot (Arduino drive base, BNO08x IMU, u-blox RTK GPS,
+    joystick) and the delivery-autonomy stack: serial bridge, joystick teleop,
+    command arbitration, GPS datum / map frame, and the hardware launch files.
+  </description>
+  <maintainer email="gnguyen@higusa.com">georgengyn</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>tf2_msgs</depend>
+  <depend>python3-serial</depend>
+
+  <!-- Started by the launch files; installed from apt (ros-jazzy-joy, ros-jazzy-twist-mux). -->
+  <exec_depend>joy</exec_depend>
+  <exec_depend>twist_mux</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

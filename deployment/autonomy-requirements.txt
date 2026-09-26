@@ -1,0 +1,18 @@
+# Python dependencies of delivery-autonomy (ros2_ws/src/delivery-autonomy/src/autonomy) on the
+# Pi. On dev machines they come from the Nix flake; here install_autonomy_deps.sh pip-installs them.
+#
+# Everything numeric comes from pip as ONE consistent set: current jax needs numpy>=2.1 and
+# scipy>=1.15, and Ubuntu 24.04's apt pandas/shapely/pyproj are compiled against numpy 1 and
+# refuse to import under numpy 2. So pandas, shapely and pyproj are listed here too, at versions
+# with numpy-2 wheels, instead of relying on apt. (Apt-built extensions such as python3-opencv
+# will likewise not import under numpy 2 for this user; nothing in ros2_ws uses them.)
+jax                                  # CPU jaxlib; aarch64 manylinux wheels exist for Python 3.12
+numpy>=2.1
+scipy>=1.15
+pandas>=2.2.2                        # first pandas with numpy-2 wheels
+shapely>=2.0.4                       # first shapely with numpy-2 wheels
+pyproj>=3.7
+networkx>=2.5
+geopandas>=1.0.1                     # osmnx requirement; apt's python3-geopandas 0.14 is too old
+osmnx>=2.1.1                         # >=2.1.1 reads its on-disk cache before touching DNS: offline starts work once cached
+adafruit-circuitpython-bno08x>=1.3.0 # imu_node: enable_feature(report_interval) so 50 Hz reports are real

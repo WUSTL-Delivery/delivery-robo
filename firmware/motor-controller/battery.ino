@@ -1,6 +1,10 @@
 // Battery Voltage Monitor with I2C LCD
 // Reads battery voltage through voltage divider (2x 10K resistors)
 // Displays on 16x2 LCD and alerts if voltage is low
+//
+// Sampling is non-blocking: one analogRead per loop() pass, SAMPLE_DELAY ms apart, so the
+// serial command parser is never stalled. (The previous readVoltage() delay()ed 100 ms
+// every 500 ms, holding up motor commands ~20% of the time.)
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -9,15 +13,36 @@
 LiquidCrystal_I2C lcd(I2C_ADDR, 16, 2);
 
 unsigned long lastUpdate = 0;
+unsigned long lastSampleTime = 0;
+long sampleSum = 0;
+int sampleCount = 0;
+float lastVoltage = 0.0;
 
 void batteryUpdate() {
-  // Update display at regular intervals
-  if (millis() - lastUpdate >= UPDATE_INTERVAL) {
-    lastUpdate = millis();
-    
-    float voltage = readVoltage();
-    displayVoltage(voltage);
-    checkLowBattery(voltage);
+  unsigned long now = millis();
+
+  // Collect SAMPLES readings, one per pass, SAMPLE_DELAY ms apart
+  if (sampleCount < SAMPLES) {
+    if (now - lastSampleTime >= SAMPLE_DELAY) {
+      sampleSum += analogRead(ANALOG_PIN);
+      sampleCount++;
+      lastSampleTime = now;
+    }
+    return;
+  }
+
+  // Average is ready; publish it to the display at the regular interval
+  if (now - lastUpdate >= UPDATE_INTERVAL) {
+    lastUpdate = now;
+
+    float average = sampleSum / (float)SAMPLES;
+    // Arduino ADC: 0-1023 represents 0-5V; multiply by the divider ratio for battery volts
+    lastVoltage = (average * 5.0 / 1023.0) * VOLTAGE_DIVIDER;
+    sampleSum = 0;
+    sampleCount = 0;
+
+    displayVoltage(lastVoltage);
+    checkLowBattery(lastVoltage);
   }
 }
 
@@ -40,24 +65,9 @@ void batteryInit() {
   lcd.clear();
 }
 
-// Read voltage with averaging for stability
+// Latest averaged battery voltage (updated by batteryUpdate(); also answers the 'b' command)
 float readVoltage() {
-  long sum = 0;
-  
-  // Take multiple samples and average
-  for (int i = 0; i < SAMPLES; i++) {
-    sum += analogRead(ANALOG_PIN);
-    delay(SAMPLE_DELAY);
-  }
-  
-  float average = sum / (float)SAMPLES;
-  
-  // Convert to voltage
-  // Arduino ADC: 0-1023 represents 0-5V
-  // Multiply by divider ratio to get actual battery voltage
-  float voltage = (average * 5.0 / 1023.0) * VOLTAGE_DIVIDER;
-  
-  return voltage;
+  return lastVoltage;
 }
 
 // Display voltage on LCD
