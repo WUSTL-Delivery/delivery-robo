@@ -34,6 +34,11 @@ def generate_launch_description():
       'lidar', default_value='true', choices=['true', 'false'],
       description='both modes: run the RPLidar C1 driver (/scan), hot-plug watchdog and /scan_filtered',
    )
+   realsense = LaunchConfiguration('realsense')
+   realsense_arg = DeclareLaunchArgument(
+      'realsense', default_value='true', choices=['true', 'false'],
+      description='both modes: run the Intel RealSense depth camera driver (/camera/color, /camera/depth)',
+   )
    is_teleop = IfCondition(PythonExpression(["'", mode, "' == 'teleop'"]))
    is_autonomous = IfCondition(PythonExpression(["'", mode, "' == 'autonomous'"]))
 
@@ -226,15 +231,47 @@ def generate_launch_description():
       print('[master_launch] laser_filters not found; no /scan_filtered '
             '(sudo apt install ros-jazzy-laser-filters)')
 
+   # --- depth camera (Intel RealSense D4xx) ----------------------------------
+   # Intel's realsense2_camera driver (apt ros-jazzy-realsense2-camera); params
+   # in config/realsense.yaml. Namespace '' + name 'camera' gives
+   # /camera/color/image_raw and /camera/depth/image_rect_raw (not the driver's
+   # default /camera/camera/...). Both modes, off with realsense:=false.
+   # Hot-plug is handled by the driver itself (wait_for_device_timeout /
+   # reconnect_timeout); respawn only covers a crash. Guarded like sllidar_ros2
+   # so launch still works where the driver isn't installed.
+   use_realsense = IfCondition(PythonExpression(["'", realsense, "' == 'true'"]))
+   realsense_nodes = []
+   try:
+      get_package_share_directory('realsense2_camera')
+      realsense_nodes.append(Node(
+         package='realsense2_camera',
+         executable='realsense2_camera_node',
+         namespace='',
+         name='camera',
+         respawn=True,
+         respawn_delay=3.0,
+         output='screen',
+         emulate_tty=True,
+         parameters=[os.path.join(get_package_share_directory('my_bringup'),
+                                  'config', 'realsense.yaml')],
+         condition=use_realsense,
+      ))
+   except PackageNotFoundError:
+      print('[master_launch] realsense2_camera not found; no depth camera '
+            '(sudo apt install ros-jazzy-realsense2-camera)')
+
+
    return LaunchDescription([
         mode_arg,
         robot_id_arg,
         api_url_arg,
         lidar_arg,
+        realsense_arg,
         *([heartbeat_node] if heartbeat_available else []),
         *robot_description_actions,  # robot description (TF)
         joy_node, 
         control_node, 
         *autonomous_nodes,
         *lidar_nodes,
+        *realsense_nodes,
     ])

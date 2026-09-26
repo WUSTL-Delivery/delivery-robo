@@ -1,0 +1,50 @@
+# Intel RealSense D4xx depth camera (Intel realsense2_camera driver, apt
+# ros-jazzy-realsense2-camera). Loaded by launch/master_launch.py.
+#
+# The node runs with namespace '' and name 'camera', so the topics are
+# /camera/color/image_raw, /camera/depth/image_rect_raw,
+# /camera/aligned_depth_to_color/image_raw and their camera_info. They are not
+# the driver's default /camera/camera/... names.
+#
+# TF: the driver publishes camera_link -> camera_{depth,color}_frame ->
+# *_optical_frame. camera_link itself is the mount, placed on base_link by the
+# robot URDF (robot_description), so the driver never publishes a parent for it.
+camera:
+  ros__parameters:
+    camera_name: camera           # frame prefix: camera_link, camera_depth_optical_frame, ...
+    base_frame_id: link
+
+    enable_color: true
+    enable_depth: true
+    enable_infra1: false
+    enable_infra2: false
+    enable_gyro: false            # D435i/D455 IMU; not used yet
+    enable_accel: false
+
+    # width,height,fps. 640x480@15 keeps USB and CPU load reasonable on the Pi.
+    # `rs-enumerate-devices` lists the profiles the connected model supports.
+    rgb_camera:
+      color_profile: "640,480,15"
+    depth_module:
+      depth_profile: "640,480,15"
+
+    # depth registered to the color image (/camera/aligned_depth_to_color/*),
+    # for anything that needs per-pixel color+depth. depth_obstacles reads the
+    # unaligned /camera/depth/image_rect_raw.
+    align_depth:
+      enable: true
+    # The driver's own point cloud is off on purpose: ~300k points/frame is too
+    # heavy for the Pi. depth_obstacles builds a small, filtered cloud instead.
+    pointcloud:
+      enable: false
+
+    publish_tf: true
+    tf_publish_rate: 0.0          # static TF only
+
+    # Hot-plug. Wait forever for a camera at startup, and retry every
+    # reconnect_timeout seconds after an unplug, so no watchdog is needed
+    # (unlike the lidar).
+    wait_for_device_timeout: -1.0
+    reconnect_timeout: 6.0
+    initial_reset: false
+
