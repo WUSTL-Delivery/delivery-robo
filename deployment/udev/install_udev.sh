@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Install the RPLidar C1 udev rule (/dev/rplidar symlink) on the robot Pi.
-# Idempotent: safe to re-run after editing 99-rplidar.rules (e.g. to pin
-# the C1's serial). Must run as root:
+# Install the robot's udev rules on the Pi (or a dev laptop):
+#   99-rplidar.rules          RPLidar C1 -> /dev/rplidar symlink
+#   99-realsense-libusb.rules Intel RealSense USB access for non-root users
+# Idempotent: safe to re-run after editing a rule (e.g. to pin the C1's
+# serial). Must run as root:
 #
 #   sudo deployment/udev/install_udev.sh
 #
@@ -14,23 +16,27 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RULE_SRC="$HERE/99-rplidar.rules"
-RULE_DST="/etc/udev/rules.d/99-rplidar.rules"
+RULES=(99-rplidar.rules 99-realsense-libusb.rules)
 ROBOT_USER="${ROBOT_USER:-delivery}"
 
-[[ -f "$RULE_SRC" ]] || { echo "missing $RULE_SRC" >&2; exit 1; }
+# 1. rule files (each only rewritten when it changed)
+for rule in "${RULES[@]}"; do
+  src="$HERE/$rule"
+  dst="/etc/udev/rules.d/$rule"
+  [[ -f "$src" ]] || { echo "missing $src" >&2; exit 1; }
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    echo "rule already up to date: $dst"
+  else
+    install -m 0644 -o root -g root "$src" "$dst"
+    echo "installed $dst"
+  fi
+done
 
-# 1. rule file (only rewritten when it changed)
-if [[ -f "$RULE_DST" ]] && cmp -s "$RULE_SRC" "$RULE_DST"; then
-  echo "rule already up to date: $RULE_DST"
-else
-  install -m 0644 -o root -g root "$RULE_SRC" "$RULE_DST"
-  echo "installed $RULE_DST"
-fi
-
-# 2. reload + re-trigger tty devices so an already-plugged C1 gets the link
+# 2. reload + re-trigger so already-plugged devices pick the rules up:
+#    tty for the C1's symlink, usb for the RealSense permissions
 udevadm control --reload-rules
 udevadm trigger --subsystem-match=tty --action=add
+udevadm trigger --subsystem-match=usb --action=add
 udevadm settle || true
 
 # 3. serial access for the robot user
@@ -50,4 +56,9 @@ if [[ -e /dev/rplidar ]]; then
   echo "OK: $(ls -l /dev/rplidar)"
 else
   echo "/dev/rplidar not present (is the C1 plugged in?)"
+fi
+if lsusb 2>/dev/null | grep -qiE 'ID (8086:0b|8086:0a|38e5:)'; then
+  echo "OK: RealSense on USB: $(lsusb | grep -iE 'ID (8086:0b|8086:0a|38e5:)' | head -1)"
+else
+  echo "no RealSense on USB (is the camera plugged in?)"
 fi

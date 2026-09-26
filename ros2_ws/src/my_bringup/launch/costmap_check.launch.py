@@ -1,9 +1,15 @@
-"""Nav2 costmap fed by the RPLidar, to check /scan is usable for costmaps.
+"""Nav2 costmap fed by the RPLidar and the RealSense, to check both are usable.
 
 Run it next to the robot stack (master_launch.py, or the boot service):
 
-    ros2 launch my_bringup costmap_check.launch.py              # uses /scan_filtered
+    ros2 launch my_bringup costmap_check.launch.py              # lidar + camera
+    ros2 launch my_bringup costmap_check.launch.py sources:=lidar
+    ros2 launch my_bringup costmap_check.launch.py sources:=camera
     ros2 launch my_bringup costmap_check.launch.py scan_topic:=/scan
+
+The lidar source reads scan_topic (/scan_filtered). The camera source reads
+/camera/scan from depth_obstacles (floor removed), so obstacles below the
+lidar plane show up too.
 
 Publishes nav_msgs/OccupancyGrid on /costmap (view it in RViz as a Map
 display, Fixed Frame base_link). Robot-centred, no odometry needed; see
@@ -15,15 +21,24 @@ import os
 from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
     scan_topic = LaunchConfiguration('scan_topic')
-    args = [DeclareLaunchArgument(
-        'scan_topic', default_value='/scan_filtered',
-        description='LaserScan topic the obstacle layer marks/clears from')]
+    sources = LaunchConfiguration('sources')
+    args = [
+        DeclareLaunchArgument(
+            'scan_topic', default_value='/scan_filtered',
+            description='lidar LaserScan topic the obstacle layer marks/clears from'),
+        DeclareLaunchArgument(
+            'sources', default_value='both', choices=['lidar', 'camera', 'both'],
+            description='observation sources: lidar (scan), camera (/camera/scan) or both'),
+    ]
+    # costmap_check.yaml names the sources `scan` (lidar) and `camera`
+    observation_sources = PythonExpression([
+        "{'lidar': 'scan', 'camera': 'camera', 'both': 'scan camera'}['", sources, "']"])
 
     missing = []
     for pkg in ('nav2_costmap_2d', 'nav2_lifecycle_manager'):
@@ -43,7 +58,8 @@ def generate_launch_description():
             package='nav2_costmap_2d',
             executable='nav2_costmap_2d',
             output='screen',
-            parameters=[params, {'obstacle_layer.scan.topic': scan_topic}],
+            parameters=[params, {'obstacle_layer.scan.topic': scan_topic,
+                                 'obstacle_layer.observation_sources': observation_sources}],
         ),
         Node(
             package='nav2_lifecycle_manager',

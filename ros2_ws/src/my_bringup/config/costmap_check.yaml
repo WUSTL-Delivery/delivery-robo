@@ -1,6 +1,6 @@
-# Lidar -> Nav2 costmap CHECK (not the real navigation config).
-# Used by launch/costmap_check.launch.py to prove the RPLidar scan builds a
-# Nav2 costmap. It needs no odometry: the costmap is robot-centred
+# Lidar + depth camera -> Nav2 costmap CHECK (not the real navigation config).
+# Used by launch/costmap_check.launch.py to prove the RPLidar scan and the
+# RealSense (via depth_obstacles' /camera/scan) build a Nav2 costmap. It needs no odometry: the costmap is robot-centred
 # (global_frame = robot_base_frame = base_link), so it works on a bench or on
 # the Pi before the EKF/odom stack is running. The real local/global costmap
 # settings live in costmap_lidar.example.yaml (global_frame odom / map).
@@ -23,7 +23,7 @@ costmap:          # standalone nav2_costmap_2d names its node /costmap
     obstacle_layer:
       plugin: "nav2_costmap_2d::ObstacleLayer"
       enabled: true
-      observation_sources: scan
+      observation_sources: scan camera   # overridden by the launch arg sources
       scan:
         topic: /scan_filtered   # overridden by the launch arg scan_topic
         data_type: "LaserScan"
@@ -37,6 +37,27 @@ costmap:          # standalone nav2_costmap_2d names its node /costmap
         max_obstacle_height: 2.0
         min_obstacle_height: 0.0
         inf_is_valid: false
+      # RealSense via my_bringup/depth_obstacles: floor-removed obstacles as a
+      # LaserScan in base_link. Catches what's below the lidar plane (curbs,
+      # boxes). The LaserScan rather than /camera/obstacles (PointCloud2)
+      # because its +inf bins ("floor seen, nothing in the way", REP-117)
+      # clear removed obstacles; the cloud has only obstacle points, so it
+      # could mark but never clear free space.
+      camera:
+        topic: /camera/scan
+        data_type: "LaserScan"
+        sensor_frame: ""              # header frame (depth_obstacles scan_frame)
+        marking: true
+        clearing: true
+        inf_is_valid: true            # +inf = known free -> clear
+        # +inf bins arrive as range_max (4.0 in realsense.yaml) and would
+        # mark if this were >= range_max: keep it just under.
+        obstacle_max_range: 3.9
+        obstacle_min_range: 0.0
+        raytrace_max_range: 3.0       # don't clear past where the floor is reliably seen
+        raytrace_min_range: 0.0
+        max_obstacle_height: 2.0
+        min_obstacle_height: -1.0     # heights were already filtered by depth_obstacles
     inflation_layer:
       plugin: "nav2_costmap_2d::InflationLayer"
       enabled: true

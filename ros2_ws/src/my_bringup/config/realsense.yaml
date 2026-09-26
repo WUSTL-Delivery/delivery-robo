@@ -1,0 +1,75 @@
+# Intel RealSense D4xx depth camera (Intel realsense2_camera driver, apt
+# ros-jazzy-realsense2-camera). Loaded by launch/master_launch.py.
+#
+# The node runs with namespace '' and name 'camera', so the topics are
+# /camera/color/image_raw, /camera/depth/image_rect_raw,
+# /camera/aligned_depth_to_color/image_raw and their camera_info. They are not
+# the driver's default /camera/camera/... names.
+#
+# TF: the driver publishes camera_link -> camera_{depth,color}_frame ->
+# *_optical_frame. camera_link itself is the mount, placed on base_link by the
+# robot URDF (robot_description), so the driver never publishes a parent for it.
+camera:
+  ros__parameters:
+    camera_name: camera           # frame prefix: camera_link, camera_depth_optical_frame, ...
+    base_frame_id: link
+
+    enable_color: true
+    enable_depth: true
+    enable_infra1: false
+    enable_infra2: false
+    enable_gyro: false            # D435i/D455 IMU; not used yet
+    enable_accel: false
+
+    # width,height,fps. 640x480@15 keeps USB and CPU load reasonable on the Pi.
+    # `rs-enumerate-devices` lists the profiles the connected model supports.
+    rgb_camera:
+      color_profile: "640,480,15"
+    depth_module:
+      depth_profile: "640,480,15"
+
+    # depth registered to the color image (/camera/aligned_depth_to_color/*),
+    # for anything that needs per-pixel color+depth. depth_obstacles reads the
+    # unaligned /camera/depth/image_rect_raw.
+    align_depth:
+      enable: true
+    # The driver's own point cloud is off on purpose: ~300k points/frame is too
+    # heavy for the Pi. depth_obstacles builds a small, filtered cloud instead.
+    pointcloud:
+      enable: false
+
+    publish_tf: true
+    tf_publish_rate: 0.0          # static TF only
+
+    # Hot-plug. Wait forever for a camera at startup, and retry every
+    # reconnect_timeout seconds after an unplug, so no watchdog is needed
+    # (unlike the lidar).
+    wait_for_device_timeout: -1.0
+    reconnect_timeout: 6.0
+    initial_reset: false
+
+# my_bringup/depth_obstacles.py: depth image -> /camera/obstacles (PointCloud2,
+# depth optical frame) + /camera/scan (LaserScan, base_link) for the costmap.
+# Heights are measured in ground_frame, where z = 0 is the floor.
+depth_obstacles:
+  ros__parameters:
+    depth_topic: /camera/depth/image_rect_raw
+    camera_info_topic: /camera/depth/camera_info
+    cloud_topic: /camera/obstacles
+    scan_topic: /camera/scan
+    ground_frame: base_footprint
+    scan_frame: base_link
+    depth_scale: 0.001            # 16UC1 depth is millimetres
+    pixel_stride: 4               # 640x480 -> 160x120 = 19.2k points/frame
+    min_depth: 0.2                # m, optical z; D4xx min-Z is ~0.2-0.3 at 640x480
+    max_depth: 4.0                # m; depth noise grows ~quadratically past this
+    min_obstacle_height: 0.05     # m above ground; lower = floor (free space)
+    max_obstacle_height: 1.0      # m; above this the robot fits under it
+    angle_min: -1.5708            # rad; scan covers +/-90 deg, NaN outside the FOV
+    angle_max: 1.5708
+    angle_increment: 0.008727     # 0.5 deg
+    range_min: 0.05
+    range_max: 4.0                # costmap obstacle_max_range must be < this
+                                  # (known-free +inf bins are sent as range_max)
+    min_hit_points: 3             # 3rd-nearest point per bin: one speckle is not a hit
+    free_min_points: 3            # floor points needed to call a bin free (+inf); 0 = never
