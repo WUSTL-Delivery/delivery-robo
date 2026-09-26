@@ -247,6 +247,38 @@ Note: the wheel-encoder node defaults to `port:=/dev/ttyUSB0`; with the C1
 also plugged in, which device gets `ttyUSB0` depends on enumeration order,
 so pass the encoder its own port (or give it its own udev symlink).
 
+## RealSense depth camera
+
+An Intel RealSense D4xx on a **USB 3** port. The driver is Intel's
+`realsense2_camera` from apt. `master_launch.py` starts it in both modes,
+with `my_bringup/depth_obstacles` next to it. `realsense:=false` turns both
+off. Params are in `ros2_ws/src/my_bringup/config/realsense.yaml`.
+
+One-time setup (Pi or laptop):
+
+```sh
+sudo apt install ros-jazzy-realsense2-camera ros-jazzy-librealsense2
+sudo deployment/udev/install_udev.sh   # also installs 99-realsense-libusb.rules
+```
+
+The apt package ships no udev rules. Without `99-realsense-libusb.rules`
+(Intel's, vendored from librealsense v2.58.4), the driver can't open the
+camera as a normal user.
+
+Topics (namespace '' + node name `camera`, so no `/camera/camera/...`):
+
+- `/camera/color/image_raw`, `/camera/depth/image_rect_raw`,
+  `/camera/aligned_depth_to_color/image_raw` (+ `camera_info`), 640x480@15
+- `/camera/obstacles`: `PointCloud2` in `camera_depth_optical_frame`. These are
+  the depth points 0.05-1.0 m above the ground, so floor and overhangs are removed.
+- `/camera/scan`: `LaserScan` in `base_link`, the same obstacles flattened.
+  A finite range is a hit, `+inf` means floor seen and free, `NaN` means no data.
+- TF `base_link -> camera_link` comes from the URDF (`camera_*` properties in
+  `robot.urdf.xacro`). The driver adds `camera_link -> camera_*_optical_frame`.
+
+Hot-plug is handled by the driver itself: it waits for a camera at startup and
+reconnects after an unplug (`reconnect_timeout`).
+
 ## Lidar -> costmap
 
 `ros2_ws/src/my_bringup/config/costmap_lidar.example.yaml` is an **example, not
@@ -274,4 +306,10 @@ Map display with Fixed Frame `base_link`:
 ```bash
 sudo apt install ros-jazzy-nav2-costmap-2d ros-jazzy-nav2-lifecycle-manager   # once
 ros2 launch my_bringup costmap_check.launch.py            # or scan_topic:=/scan
+ros2 launch my_bringup costmap_check.launch.py sources:=camera   # lidar | camera | both
 ```
+
+`sources` defaults to `both`: the lidar's `/scan_filtered` plus the camera's
+`/camera/scan`. The camera source marks obstacles below the lidar plane,
+like a shoebox, and clears them again once they're gone. The example config
+(`costmap_lidar.example.yaml`) has the same `camera` source.
