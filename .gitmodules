@@ -1,0 +1,3 @@
+[submodule "ros2_ws/src/sllidar_ros2"]
+	path = ros2_ws/src/sllidar_ros2
+	url = https://github.com/Slamtec/sllidar_ros2
