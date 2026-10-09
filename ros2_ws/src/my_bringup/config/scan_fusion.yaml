@@ -1,0 +1,25 @@
+# Existing preprocessing is reused: laser_filters removes lidar self-hits;
+# depth_obstacles filters floor/overhangs and rejects isolated depth hits.
+# Mounts come from robot_description TF, including the RealSense optical frames.
+scan_fusion:
+  ros__parameters:
+    lidar_topic: /scan_filtered
+    camera_topic: /camera/scan
+    output_topic: /scan_fused
+    output_frame: base_link
+    # Empty permits bench checks without odometry. Set to odom for driving:
+    # requires odom -> base_footprint/base_link TF at both capture timestamps.
+    fixed_frame: ""
+    bins: 360
+    range_min: 0.05
+    range_max: 12.0
+    sync_tolerance_s: 0.05
+    max_age_s: 0.3
+    pair_wait_s: 0.05
+    tf_wait_s: 0.1
+    queue_size: 10
+
+# /scan_fused carries obstacle endpoints only. Missing, invalid and infinite
+# inputs become NaN, not free space. In a costmap use marking: true and
+# clearing: false; preserve physical sensor observations for clearing.
+# The current camera/lidar mounts in robot_description are provisional.
