@@ -3,6 +3,7 @@
 Needs launch_ros importable (a sourced ROS environment); skipped otherwise.
 """
 import importlib.util
+import math
 import os
 
 import pytest
@@ -120,3 +121,118 @@ def test_tdm22_patching_leaves_the_planner_alone(tdm21_params):
         planner = patched['planner_server']['ros__parameters']
         assert planner['GridBased'] == tdm21_params['planner_server']['ros__parameters']['GridBased']
         assert planner['use_sim_time'] is sim
+
+
+# ---------------------------------------------------------------- TDM-29: inflation, params file
+def _tdm29_inflation_cost(params, distance):
+    """Nav2 InflationLayer cost at `distance` m from a lethal cell, per nav2_local.yaml.
+
+    253 inside the footprint's inscribed radius, 252 * exp(-cost_scaling_factor * (distance -
+    inscribed)) out to inflation_radius, 0 beyond.
+    """
+    costmap = _costmap(params)
+    inflation = costmap['inflation_layer']
+    footprint = yaml.safe_load(costmap['footprint'])
+    inscribed = min(min(abs(x) for x, _ in footprint), min(abs(y) for _, y in footprint))
+    if distance <= inscribed:
+        return 253
+    if distance > inflation['inflation_radius']:
+        return 0
+    return 252 * math.exp(-inflation['cost_scaling_factor'] * (distance - inscribed))
+
+
+def test_tdm29_inflation_centres_paths_in_a_3m_corridor(tdm21_params):
+    costmap = _costmap(tdm21_params)
+    footprint = yaml.safe_load(costmap['footprint'])
+    circumscribed = max(math.hypot(x, y) for x, y in footprint)
+    half_width = 1.5   # boundary map: free within 1.5 m of the walkway edge
+    assert costmap['inflation_layer']['inflation_radius'] >= half_width + costmap['resolution']
+    centre = _tdm29_inflation_cost(tdm21_params, half_width)
+    # the centreline itself carries cost, so there is no zero-cost strip to wander in ...
+    assert 2.0 <= centre <= 40.0
+    # ... and every step off it costs more
+    off = [_tdm29_inflation_cost(tdm21_params, half_width - d) for d in (0.2, 0.4, 0.8)]
+    assert centre < off[0] < off[1] < off[2]
+    # 0.8 m off the centreline stays below the analytic-expansion cap (and far below inscribed,
+    # which only covers 0.32 m by each wall), so a robot that starts there can still plan
+    grid = tdm21_params['planner_server']['ros__parameters']['GridBased']
+    assert off[2] < grid['analytic_expansion_max_cost']
+    # Smac's footprint check needs a non-zero cost at the circumscribed radius
+    assert _tdm29_inflation_cost(tdm21_params, circumscribed) > 0
+
+
+def test_tdm29_params_path_is_per_user_and_domain():
+    path = nav2_local.patched_params_path
+    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': '80'}) == '/rh/nav2_local_params_domain80.yaml'
+    assert path({'ROS_HOME': '/rh'}) == '/rh/nav2_local_params_domain0.yaml'   # ROS's default domain
+    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': ' 7 '}) == '/rh/nav2_local_params_domain7.yaml'
+    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': '../x'}) == '/rh/nav2_local_params_domain0.yaml'
+    assert path({}) == os.path.join(os.path.expanduser('~'), '.ros', 'nav2_local_params_domain0.yaml')
+
+
+def test_tdm29_write_params_replaces_the_file(tmp_path):
+    target = str(tmp_path / 'rh' / 'nav2_local_params_domain0.yaml')
+    nav2_local.write_params({'a': 1}, target)
+    nav2_local.write_params({'a': 2}, target)
+    assert os.listdir(tmp_path / 'rh') == ['nav2_local_params_domain0.yaml']
+    with open(target) as f:
+        assert yaml.safe_load(f) == {'a': 2}
+
+
+def test_tdm29_failed_write_keeps_the_old_file_and_no_temp(tmp_path, monkeypatch):
+    target = str(tmp_path / 'nav2_local_params_domain0.yaml')
+    nav2_local.write_params({'a': 1}, target)
+
+    def disk_full(*args, **kwargs):
+        raise OSError('disk full')
+    monkeypatch.setattr(yaml, 'safe_dump', disk_full)
+    with pytest.raises(OSError):
+        nav2_local.write_params({'a': 2}, target)
+    assert os.listdir(tmp_path) == ['nav2_local_params_domain0.yaml']
+    with open(target) as f:
+        assert yaml.safe_load(f) == {'a': 1}
+
+
+def _tdm29_launch(map_yaml, sim='false'):
+    """Run the launch file's OpaqueFunction once, as `ros2 launch` would; returns its actions."""
+    from launch import LaunchContext
+
+    if not all(nav2_local._have(p) for p in ('nav2_map_server', 'nav2_costmap_2d',
+                                             'nav2_lifecycle_manager')):
+        pytest.skip('Nav2 packages not installed: the launch starts nothing')
+    context = LaunchContext()
+    context.launch_configurations.update({
+        'sim': sim, 'sources': 'auto', 'scan_topic': '', 'map': str(map_yaml),
+        'params_file': os.path.join(PKG, 'config', 'nav2_local.yaml'),
+        'local_planner': 'false', 'drive': 'false'})
+    return nav2_local._launch_setup(context)
+
+
+def test_tdm29_repeated_launches_leave_one_params_file(tmp_path, monkeypatch):
+    from launch_ros.actions import Node
+
+    ros_home = tmp_path / 'ros_home'
+    monkeypatch.setenv('ROS_HOME', str(ros_home))
+    monkeypatch.setenv('ROS_DOMAIN_ID', '42')
+    map_yaml = tmp_path / 'boundary.yaml'
+    map_yaml.write_text('image: boundary.png\n')
+    for sim in ('false', 'true', 'false'):
+        assert any(isinstance(a, Node) for a in _tdm29_launch(map_yaml, sim))
+    # (launch may also create ROS_HOME/log); a leftover temp file would be .nav2_local_*.yaml
+    assert [f for f in os.listdir(ros_home) if f.endswith('.yaml')] == ['nav2_local_params_domain42.yaml']
+    with open(ros_home / 'nav2_local_params_domain42.yaml') as f:
+        params = yaml.safe_load(f)
+    assert params['map_server']['ros__parameters']['yaml_filename'] == str(map_yaml)
+    assert params['map_server']['ros__parameters']['use_sim_time'] is False   # the last launch's args
+
+
+def test_tdm29_unwritable_params_file_starts_nothing(tmp_path, monkeypatch):
+    from launch.actions import LogInfo
+
+    not_a_dir = tmp_path / 'ros_home'
+    not_a_dir.write_text('')            # ROS_HOME is a file: the params file cannot be written
+    monkeypatch.setenv('ROS_HOME', str(not_a_dir))
+    map_yaml = tmp_path / 'boundary.yaml'
+    map_yaml.write_text('image: boundary.png\n')
+    actions = _tdm29_launch(map_yaml)
+    assert len(actions) == 1 and isinstance(actions[0], LogInfo)

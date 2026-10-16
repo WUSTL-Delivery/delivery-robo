@@ -27,16 +27,20 @@ sources:=
   separate  /scan_filtered and /camera/scan both mark and clear.
   lidar     one LaserScan (scan_topic) marks and clears. Default with sim:=true (/scan).
 
-The params file is patched with PyYAML and written to a temp file, because launch_ros dict
-parameters on planner_server never reach its costmap sub-node (/global_costmap/global_costmap).
+The params file is patched with PyYAML and written to $ROS_HOME/nav2_local_params_domain<N>.yaml
+(default ~/.ros, N = ROS_DOMAIN_ID), because launch_ros dict parameters on planner_server never
+reach its costmap sub-node (/global_costmap/global_costmap). Every launch on that domain rewrites
+the same file, so nothing piles up; it is kept after shutdown (it is what the nodes started with).
 
-Degrades instead of aborting a parent launch: no map found -> logs and starts nothing; Nav2
-packages missing -> logs the apt command; nav2_planner missing -> runs the standalone
+Degrades instead of aborting a parent launch: no map found or the patched params file cannot be
+written -> logs and starts nothing; Nav2 packages missing -> logs the apt command; nav2_planner
+missing -> runs the standalone
 nav2_costmap_2d node under the same name (/global_costmap/global_costmap, same parameters, same
 topic), so the costmap can still be checked before the planner is installed (local_planner
 then only waits for the planner action server); nav2_msgs / shared_types missing or a stale
 build without the local_planner executable -> logs and skips local_planner only.
 """
+import contextlib
 import copy
 import os
 import tempfile
@@ -115,6 +119,40 @@ def patch_params(params, *, map_yaml, sources, scan_topic='', sim=False, planner
     return params
 
 
+def patched_params_path(environ=None):
+    """Where the patched params file goes: one per user and ROS domain, rewritten by every launch.
+
+    $ROS_HOME (default ~/.ros, where ROS keeps its logs) rather than a new mkstemp file per launch,
+    which piled up in /tmp. Keyed by ROS_DOMAIN_ID because a second stack can only run beside this
+    one on another domain (one domain cannot hold two /planner_server), e.g. a test next to a sim.
+    """
+    environ = os.environ if environ is None else environ
+    home = os.path.expanduser(environ.get('ROS_HOME') or os.path.join('~', '.ros'))
+    domain = environ.get('ROS_DOMAIN_ID', '').strip()
+    return os.path.join(home, f'nav2_local_params_domain{domain if domain.isdigit() else 0}.yaml')
+
+
+def write_params(params, path):
+    """Dump params to path atomically: a temp file beside it, then a rename over it.
+
+    A reader never sees half a file, and a failed write leaves the previous file and no stray
+    temp file.
+    """
+    import yaml  # noqa: PLC0415 - see _launch_setup
+
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.nav2_local_', suffix='.yaml', dir=directory)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            yaml.safe_dump(params, f, sort_keys=False)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 def local_planner_params(params, *, sim=False, drive=False):
     """local_planner's parameters: sim time, drive, and the planner_id planner_server serves."""
     planner = params.get('planner_server', {}).get('ros__parameters', {})
@@ -170,9 +208,12 @@ def _launch_setup(context):
     with open(params_file) as f:
         params = patch_params(yaml.safe_load(f), map_yaml=map_yaml, sources=sources,
                               scan_topic=scan_topic, sim=sim, planner=planner)
-    fd, patched = tempfile.mkstemp(prefix='nav2_local_', suffix='.yaml')
-    with os.fdopen(fd, 'w') as f:
-        yaml.safe_dump(params, f, sort_keys=False)
+    patched = patched_params_path()
+    try:
+        write_params(params, patched)
+    except OSError as ex:
+        return [LogInfo(msg=f'[nav2_local] cannot write the patched params file {patched}: {ex}; '
+                            'Nav2 NOT started (set ROS_HOME to a writable directory)')]
 
     obstacle = params['global_costmap']['global_costmap']['ros__parameters']['obstacle_layer']
     wiring = ', '.join(f"{obstacle[n]['topic']} ({_role(obstacle[n])})"
