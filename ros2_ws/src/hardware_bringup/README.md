@@ -56,7 +56,7 @@ delivery-autonomy MPPI controller, see [Controller parameters](#controller-param
 
 ## delivery-autonomy version
 
-The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `f0298b0` of
+The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `551467a` of
 delivery-autonomy's **`dev`** branch. That is our branch of the upstream code, made while its
 author is away. It adds the controller parameters below, the slow-down and stop for costmap
 obstacles, the taper into the path end, MPPI's costmap cost, the robot's geometry as controller
@@ -72,7 +72,7 @@ on the Pi. That failure is not fatal: the Pi logs "submodule update failed" and 
 delivery-autonomy it already has (upstream `2b8924b`, the previous pin). That old controller
 ignores every `controller_server` value in `hardware.yaml`. It drives at a fixed 1.5 m/s, does
 not read the costmap, and can reverse. Before driving autonomously, check that
-`git -C ros2_ws/src/delivery-autonomy rev-parse --short HEAD` on the Pi prints `f0298b0`.
+`git -C ros2_ws/src/delivery-autonomy rev-parse --short HEAD` on the Pi prints `551467a`.
 
 ## Controller parameters
 
