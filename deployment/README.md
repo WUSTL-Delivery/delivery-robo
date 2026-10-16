@@ -87,6 +87,12 @@ cd ros2_ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install
 source install/setup.bash && ros2 run hardware_bringup bench_mppi   # MPPI must fit the 100 ms control tick
 ```
 
+The submodule is pinned to delivery-autonomy's `dev` branch (commit `861989d`). The Pi can
+fetch that commit only once `dev` is pushed to the submodule's remote. That push is human
+ticket TDM-35, and it has not happened yet. Until then the submodule update fails (non-fatally)
+and the Pi keeps its old checkout, which ignores the controller settings in `hardware.yaml`
+(`hardware_bringup/README.md`, "delivery-autonomy version").
+
 `install_autonomy_deps.sh` pip-installs into `~/.local` with `--break-system-packages`
 (PEP 668). Current `jax` needs numpy 2, so the whole numeric stack (numpy, scipy, pandas,
 shapely, pyproj, geopandas, osmnx) comes from pip as one consistent set; the apt copies stay
@@ -107,8 +113,13 @@ place of the robot: `startup.sh` also builds the `simulation` package, and `mast
 starts `run_simulator.sh` (Gazebo + robot spawn + `ros_gz_bridge`) and `simulation.launch.py`
 (robot state publisher, ground truth, RViz) instead of the sensors and the drive chain. The
 autonomy nodes come from the same `autonomy_real.launch.py` as on the robot, with sim time, the
-sim's `/gps/fix`, `/imu/data` and `/odom`, the controller on the sim's `/cmd_vel`, and the fixed
-spawn-pose `map→odom` instead of `gps_datum_tf`. No joystick, `twist_mux` or bridge.
+sim's `/gps/fix`, `/imu/data` and `/odom`, the controller on the sim's `/cmd_vel` with the
+robot's `controller_server` values from `hardware.yaml`, and `gps_datum_tf` in its `local_enu`
+mode: it gates the sim's `/gps/fix` and publishes `map→odom` from the first fix the EKF takes, as
+that fix's Gazebo world position. No joystick, `twist_mux` or bridge. `startup.sh` does not
+pass `nav2`, so the controller runs without the costmap (`use_costmap` false). To test with
+Nav2, start `master_launch.py` by hand with `nav2:=true` next to a Jazzy terminal running Nav2
+(`hardware_bringup/README.md`, "Sim recipe").
 
 Gazebo and the autonomy Python deps come from delivery-autonomy's Nix flake, not from
 `/opt/ros/jazzy`, so run the boot script inside its devshell with `ROS_SETUP=` (use the ROS

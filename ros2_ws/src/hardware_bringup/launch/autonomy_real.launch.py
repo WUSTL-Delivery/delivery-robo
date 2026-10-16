@@ -1,12 +1,16 @@
 """delivery-autonomy on the real robot: gps_datum_tf + state_estimation + planner + controller.
 
 Plan stages 2 and 4. Starts the three autonomy executables directly with hardware
-parameters instead of autonomy.launch.py (whose map->odom is the Gazebo spawn pose), so
+parameters instead of autonomy.launch.py (whose map->odom is a fixed Gazebo pose), so
 delivery-autonomy itself is never edited:
 
 * state_estimation reads the gated GPS on /gps/fix, /imu/data, the bridge's /odom, and the
   command the bridge actually executed (/cmd_vel_executed) as its prediction input;
 * the controller's hardcoded /cmd_vel publisher is remapped to /cmd_vel_nav for twist_mux;
+* the controller takes its speeds and stop distance from hardware.yaml (controller_server), and
+  use_costmap from nav2:= (master_launch passes its own nav2), so it slows and stops for
+  obstacles in Nav2's costmap only when Nav2 runs. Without a costmap it would otherwise crawl at
+  crawl_speed (0.3 m/s) waiting for one;
 * global_planner runs with cwd = planner_cache_dir so its osmnx Overpass cache (./cache)
   survives reboots; robot.service sets no WorkingDirectory.
 
@@ -19,8 +23,10 @@ controller straight on the sim's /cmd_vel (no twist_mux), and gps_datum_tf in it
 mode. It gates Gazebo's /gps/fix onto /gps/fix_gated for state_estimation and publishes
 map->odom from the first fix it forwards, as the Gazebo world position of that fix (the sim's
 map frame is the world frame). The robot settles 0.37 m from its spawn request after the
-drop, so a fixed map->odom at the spawn pose (autonomy.launch.py) is off by however far it
-moved before the EKF's first fix. Taking both from the same fix removes that race.
+drop. A fixed map->odom (autonomy.launch.py: the settled pose since delivery-autonomy TDM-39)
+is off by however far the robot is from that pose at the EKF's first fix. Taking both from the
+same fix removes that race. The controller gets hardware.yaml's controller_server values here
+too, so the sim drives with the robot's speeds and stop distance.
 """
 import os
 
@@ -40,6 +46,7 @@ def _nodes(context):
     hardware_yaml = LaunchConfiguration('hardware_params').perform(context)
     gps_in = LaunchConfiguration('gps_in_topic').perform(context)
     sim = LaunchConfiguration('sim').perform(context) == 'true'
+    nav2 = LaunchConfiguration('nav2').perform(context) == 'true'
     ekf_cmd_vel = (LaunchConfiguration('ekf_cmd_vel_topic').perform(context)
                    or ('/cmd_vel' if sim else '/cmd_vel_executed'))
     cache_dir = os.path.expanduser(LaunchConfiguration('planner_cache_dir').perform(context))
@@ -98,6 +105,9 @@ def _nodes(context):
         cwd=cache_dir,
         parameters=[real_time],
     )
+    # hardware.yaml's controller_server section (speeds, stop distance) in both modes, so the sim
+    # drives with the robot's values. use_costmap follows nav2: without Nav2 there is no costmap,
+    # and the controller would cap itself at crawl_speed waiting for one.
     controller = Node(
         package='autonomy',
         executable='controller',
@@ -105,7 +115,7 @@ def _nodes(context):
         output='screen',
         respawn=True,
         respawn_delay=3.0,
-        parameters=[real_time],
+        parameters=[hardware_yaml, {**real_time, 'use_costmap': nav2}],
         remappings=[] if sim else [('/cmd_vel', '/cmd_vel_nav')],
     )
     return [datum, state_estimation, global_planner, controller]
@@ -127,6 +137,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'sim', default_value='false', choices=['true', 'false'],
             description='run against the delivery-autonomy Gazebo sim instead of the robot'),
+        DeclareLaunchArgument(
+            'nav2', default_value='false', choices=['true', 'false'],
+            description="Nav2 runs and publishes /global_costmap/costmap (master_launch passes its own "
+                        "nav2). Sets the controller's use_costmap: slow down and stop for costmap "
+                        "obstacles. false = the controller ignores the costmap"),
         DeclareLaunchArgument(
             'planner_cache_dir', default_value='~/.cache/delivery_autonomy',
             description='working directory of global_planner, holds its osmnx ./cache'),

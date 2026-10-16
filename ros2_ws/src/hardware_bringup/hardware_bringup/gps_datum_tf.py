@@ -17,15 +17,18 @@ between the GPS driver and the EKF so that:
    stationary while the stack (re)starts.
 
 ``map`` is the planner's frame: UTM zone 15N grid east/north, origin at the planner's
-hardcoded ``utm_origin``. ``odom`` is the EKF's frame: true east/north
-(``latlon2meters.py``), origin at the datum. Hence
+hardcoded ``utm_origin``. ``odom`` is the EKF's frame: true east/north in the WGS84 local
+tangent plane at the datum (``latlon2meters.py`` since delivery-autonomy TDM-38), origin at the
+datum. Hence
 
     translation = UTM(datum) - utm_origin
     yaw         = grid convergence at the datum  (about +1.685 deg here)
 
 Leaving the yaw at zero would misplace planner paths by ~2.9 m per 100 m from the datum.
-Not modelled (a rigid transform cannot): UTM point scale (1.00028) and the equirectangular
-radius error in ``latlon2meters`` (0.1-0.3 %), together up to ~0.3 m per 100 m.
+Not modelled (a rigid transform cannot): the UTM point scale (1.00028, i.e. ~2.8 cm per 100 m
+from the datum) and the change of the convergence across campus (0.002 deg, ~1 cm over 300 m).
+Before TDM-38 the EKF used a spherical (equirectangular) radius, which added 0.1-0.3 % (the
+steady ~0.25 m EKF bias at the end of the 190 m sim route; 0.002 m after).
 
 ``projection: local_enu`` is for the Gazebo sim (``autonomy_real.launch.py sim:=true``). There
 ``map`` is the Gazebo world frame, and the NavSat sensor converts world positions to lat/lon as
