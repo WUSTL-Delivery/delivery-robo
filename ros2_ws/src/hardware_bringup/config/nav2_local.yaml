@@ -32,15 +32,72 @@ map_server:
     topic_name: map           # -> /map, transient local
     frame_id: map
 
-# Placeholder only: TDM-22 tunes the Smac Hybrid-A* parameters (motion model,
-# turning radius, planning time, ...). Until then the plugin runs on defaults.
+# Local path planning (TDM-22): Smac Hybrid-A* on the costmap below. The only
+# client is hardware_bringup local_planner: ComputePathToPose, planner_id
+# GridBased, use_start false (start = base_link from TF), goal in map with a
+# heading along the route, ~12 m ahead, at 1 Hz. The path comes back in the
+# costmap frame (odom); local_planner moves it to map for /follow_path.
+# Parameter names checked against nav2_smac_planner 1.3.13 (Jazzy).
 planner_server:
   ros__parameters:
     use_sim_time: false
-    expected_planner_frequency: 1.0
-    planner_plugins: ["GridBased"]
+    expected_planner_frequency: 1.0   # Hz; local_planner's rate (only a warning threshold)
+    planner_plugins: ["GridBased"]    # = local_planner's planner_id
     GridBased:
-      plugin: "nav2_smac_planner::SmacPlannerHybrid"   # TDM-22 tunes it
+      plugin: "nav2_smac_planner::SmacPlannerHybrid"
+      # Forward-only Dubins primitives: the MPPI follower can't drive cusps.
+      # Measured on the boundary map's 3 m corridors (TDM-22):
+      #  * a goal behind the robot gets a forward U-turn (it fits at radius
+      #    1.0, footprint >= 0.2 m from the walls), never a reversing move;
+      #  * no forward path at all -> ABORTED, NO_VALID_PATH (208), logged by
+      #    planner_server as "no valid path found", within 0.25 s;
+      #  * a goal too close for an S-curve (0.5 m off to the side and < ~1.3 m
+      #    ahead, or 0.2 m and < ~0.9 m) comes back as a ~12 m loop, not a
+      #    failure. local_planner must not replan inside ~2 m of its final goal.
+      motion_model_for_search: "DUBIN"
+      minimum_turning_radius: 1.0     # m; real robot 0.78, sim 0.73, so the follower keeps margin
+      angle_quantization_bins: 72     # 5 deg heading bins
+      # Search + smoothing share this budget; local_planner replans every 1 s.
+      # Laptop: 2-6 ms for 12 m along a corridor, ~40 ms for a U-turn + loop.
+      max_planning_time: 1.0          # s
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      terminal_checking_interval: 5000
+      # If the exact goal pose can't be reached, return the best path ending
+      # within this of it (search running out, not the loop case above).
+      tolerance: 0.25                 # m; = the follower's goal tolerance
+      allow_unknown: false            # off-map cells are unknown: never plan through them
+      downsample_costmap: false       # plan at the costmap's 0.1 m
+      downsampling_factor: 1
+      # The window rolls with the robot and the scans change it every update,
+      # so the obstacle heuristic must be recomputed for every request.
+      cache_obstacle_heuristic: false
+      downsample_obstacle_heuristic: true
+      # Nav2 Smac defaults (set explicitly so they are visible) except cost_penalty.
+      # Docs range 1.3-3.5. 3.0 rather than the default 2.0: past a 0.6 m scan
+      # obstacle in the 3 m corridor the path centres in the gap (footprint
+      # 0.29 m from the obstacle) instead of brushing it (0.08 m at 2.0).
+      cost_penalty: 3.0
+      use_quadratic_cost_penalty: false
+      non_straight_penalty: 1.2
+      change_penalty: 0.0
+      reverse_penalty: 2.0            # unused with DUBIN
+      retrospective_penalty: 0.015
+      lookup_table_size: 20.0         # m; Dubins heuristic table, > the ~12 m carrot
+      analytic_expansion_ratio: 3.5
+      analytic_expansion_max_length: 3.0  # m
+      analytic_expansion_max_cost: 200.0
+      analytic_expansion_max_cost_override: false
+      allow_primitive_interpolation: false
+      debug_visualizations: false
+      smooth_path: true
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+        do_refinement: true
+        refinement_num: 2
 
 global_costmap:
   global_costmap:
@@ -114,9 +171,13 @@ global_costmap:
 
         # RPLidar C1 after laser_filters (/scan_filtered, lidar_link, ~10 Hz).
         # Sim: Gazebo's /scan. inf = no return = free out to raytrace_max_range,
-        # so a person who walks away is cleared even with nothing behind them
-        # (the sim publishes inf; on the robot laser_filters' range filter
-        # currently turns inf into NaN, which neither marks nor clears).
+        # so a person who walks away is cleared even with nothing behind them.
+        # Both publish inf for no-return bins: the sim natively, and on the
+        # robot laser_filters passes sllidar's +inf through unchanged (TDM-27:
+        # my_bringup/config/laser_filters.yaml upper_replacement_value .inf;
+        # before that the range filter turned every no-return into 0.0, which
+        # neither marks nor clears). inf_is_valid: true makes those bins clear.
+        # Near-field self-hits (<= 0.15 m) arrive as NaN and are ignored.
         lidar:
           topic: /scan_filtered    # scan_topic:= / sim:=true override
           data_type: "LaserScan"
