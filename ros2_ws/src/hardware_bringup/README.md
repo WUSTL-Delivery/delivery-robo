@@ -46,7 +46,8 @@ First-time setup on the Pi: `deployment/install_autonomy_deps.sh` (Python deps, 
 
 All parameters live in `config/hardware.yaml`. The three geometry numbers under `/**` are shared
 by `arduino_bridge` and `joy_to_cmdvel` and must stay identical for both, which is why they are
-declared once. Its `controller_server` section holds the robot's settings for the
+declared once. The controller reads two of them too, `wheelbase` and `max_steer_rad`, for its
+vehicle model. Its `controller_server` section holds the robot's other settings for the
 delivery-autonomy MPPI controller, see [Controller parameters](#controller-parameters).
 
 `autonomy_real.launch.py` arguments: `hardware_params` (default `config/hardware.yaml`),
@@ -76,9 +77,10 @@ not read the costmap, and can reverse. Before driving autonomously, check that
 
 `autonomy_real.launch.py` starts delivery-autonomy's controller (`controller_server`, the MPPI
 path follower behind `/follow_path`) with `config/hardware.yaml` as its parameter file. It does
-this with `sim:=true` too, so the sim drives with the robot's values. The file sets only the three
-values that differ from the controller's defaults. `use_costmap` comes from the launch file's
-`nav2` argument. All but the two topics can be changed at runtime
+this with `sim:=true` too, so the sim drives with the robot's values, except for the vehicle model
+(below). The `controller_server` section sets only the three values that differ from the
+controller's defaults. The wheelbase and steering limit come from `/**`. `use_costmap` comes from
+the launch file's `nav2` argument. All but the two topics can be changed at runtime
 (`ros2 param set /controller_server ...`). The controller rejects a value outside the ranges below.
 
 | Parameter | Robot | Default | Why |
@@ -95,11 +97,15 @@ values that differ from the controller's defaults. `use_costmap` comes from the 
 | `goal_creep_speed` | 0.15 | 0.15 | m/s. The taper's floor, so the robot still reaches the end. |
 | `xy_goal_tolerance` | 0.25 | 0.25 | m (EKF). The path counts as done within this distance of its end... |
 | `yaw_goal_tolerance` | 0.15 | 0.15 | rad. ...and this heading error. |
+| `wheelbase` | **0.36322** (`/**`) | 0.5 | m. MPPI's vehicle model, and the conversion of its steering angle into the yaw rate it sends. `arduino_bridge` converts back with the same `/**` value, so the robot steers the angle MPPI planned. The sim gets the Gazebo car's 0.5. |
+| `max_steer_rad` | **0.4363** (`/**`) | 0.6 | rad. MPPI samples steering within ±this, and the command is clipped to it. It is the bridge's own limit, so MPPI plans only turns the robot can make: 0.78 m radius at the tightest, where the sim car's 0.6 rad meant 0.73 m. The sim gets 0.6. Range (0, π/2). |
+| `steer_tau`, `drive_tau`, `max_accel` | defaults | 0.545, 0.01, 5.0 | s, s, m/s². The model's steering lag, speed lag and acceleration limit, fitted to the Gazebo car. Nobody has measured the robot's (see "Calibration"), so it keeps the sim's. Must be positive. |
 | `state_topic`, `costmap_topic` | defaults | `/state_estimation/odom`, `/global_costmap/costmap` | |
 
-Not parameters yet: MPPI's model has the sim robot's geometry (wheelbase 0.5 m, steering limit
-0.6 rad) in delivery-autonomy `utils/dynamics.py`. The robot's are 0.36322 m and 0.4363 rad (see
-"Known limits").
+The sim car is not the robot. With `sim:=true`, `autonomy_real.launch.py` gives the controller the
+Gazebo car's vehicle model (`SIM_VEHICLE` there: 0.5 m, 0.6 rad and the default lags), or
+`hardware.yaml`'s `/**` values would reach the sim controller too. Check with
+`ros2 param get /controller_server wheelbase`: 0.36322 on the robot, 0.5 in the sim.
 
 ## Nav2 local planning
 
@@ -332,9 +338,10 @@ Every value here was guessed from code that contradicts itself; measure each one
 |---|---|
 | `metres_per_tick` | Push the robot a tape-measured 10 m in a straight line. `ros2 topic echo /wheel_ticks` before and after; divide. Sign: positive if the count grew while going forward. |
 | `servo_center_deg` | Front jacked up. Publish `/cmd_vel_out` (`-r 10`) with `x: 0.3` and `z: 0.0` while adjusting the value until the wheels point straight. The deployed `joystick_node` used 45; the firmware and the ros2_control HAL use 90. |
-| `servo_deg_per_rad`, `max_steer_rad` | Command a known yaw rate at a known speed (δ = atan(ω·L/v)), read the road-wheel angle with a protractor, take the ratio servo-degrees/road-radian. `max_steer_rad` is the mechanical limit of the linkage. Keep `joy_to_cmdvel`'s copy identical (it is the shared `/**` value). |
+| `servo_deg_per_rad`, `max_steer_rad` | Command a known yaw rate at a known speed (δ = atan(ω·L/v)), read the road-wheel angle with a protractor, take the ratio servo-degrees/road-radian. `max_steer_rad` is the mechanical limit of the linkage. `joy_to_cmdvel` and the controller read the same shared `/**` value. |
 | `pwm_per_mps`, `pwm_limit` | On the ground, publish (`-r 10`) `x:` 0.3, 0.6, 0.9, 1.2, 1.5 m/s in turn and read the steady `/odom` speed for each; fit a line through PWM (= x·pwm_per_mps) versus measured speed and update `pwm_per_mps`. `pwm_limit` caps the drive (110 = today's joystick cap; firmware accepts 255). The drive is open loop, so the fit is the speed control. |
-| `wheelbase` | Tape measure, rear axle centre to front axle centre. The URDF says 0.36322, the HAL 0.30, the autonomy model 0.5 (the autonomy's own 0.5 stays: the bridge absorbs the difference, except in the tightest turns, see "Known limits"). |
+| `wheelbase` | Tape measure, rear axle centre to front axle centre. The URDF says 0.36322, the HAL 0.30. The MPPI controller's model reads the same `/**` value, so one measurement fixes both. |
+| `steer_tau`, `drive_tau`, `max_accel` (`controller_server`) | Unmeasured, the controller keeps the sim car's fit. On the ground, step `/cmd_vel_out` from 0 to 1.0 m/s straight ahead: the slope at the start of the `/odom` speed is `max_accel`, the time constant of its approach to the final speed `drive_tau`. Then at a steady 0.5 m/s step the steering and fit the time constant of the yaw rate on `/imu/data` for `steer_tau`. Not `/odom`'s yaw rate: it is computed from the command (see "Known limits"). Write the values into `controller_server`. |
 | IMU covariances | `ros2 run imu_package imu_covariance_estimator` while driving, then paste into `imu_node.py`. The committed values were measured at rest. |
 
 ## Known limits
@@ -355,15 +362,16 @@ Every value here was guessed from code that contradicts itself; measure each one
   sensor is the real fix.
 - **MPPI.** K=3000 rollouts × T=50 at 10 Hz; `bench_mppi` decides whether the Pi can. `K` lives in
   tangled code (`docs/20260109142710-delivery.org` in delivery-autonomy).
-- **MPPI's geometry is the sim robot's.** delivery-autonomy's dynamics model and `publish_command`
-  use a wheelbase of 0.5 m and a steering limit of 0.6 rad. The robot has 0.36322 m and
-  0.4363 rad. The controller sends speed and yaw rate (ω = v/0.5·tan δ), and `arduino_bridge`
-  turns that back into a steering angle with the real wheelbase (δ = atan(ω·0.36322/v)), so the
-  curvature MPPI asked for is what the robot gets. The exception is the tightest turns: MPPI
-  thinks it can turn on a 0.73 m radius, the robot only on 0.78 m. Any model angle above
-  0.570 rad is clipped to the robot's 0.4363 rad, and the robot then turns up to 6 % wider than
-  MPPI predicted. Nav2 plans with a 1.0 m minimum radius, so this only happens in hard
-  corrections. Both numbers are hardcoded in delivery-autonomy, not parameters.
+- **MPPI's lags are the sim car's.** Since delivery-autonomy TDM-41 the controller models the
+  robot's wheelbase and steering limit (`wheelbase`, `max_steer_rad` from `/**`). MPPI plans only
+  turns the robot can make, and the bridge steers the angle MPPI asked for. Before, it planned
+  with the sim car's 0.5 m and 0.6 rad. It thought it could turn on a 0.73 m radius where the
+  robot needs 0.78 m, and any model angle above 0.570 rad came out up to 6.6 % wider than
+  predicted. The steering lag (0.545 s), speed lag (0.01 s) and acceleration limit (5 m/s²) are
+  still the Gazebo fit. The robot's servo and open-loop drive have not been measured (see
+  "Calibration"). The EKF's model also stays the sim car's. That does no harm: it turns the
+  executed yaw rate back into an angle with the same 0.5 m it predicts with, so it gets the
+  curvature right.
 - **EKF tuning** assumed the sim's noiseless GPS (`R_gps` = 3 cm) and its 100 Hz IMU. Both are
   tangled constants; expect to retune after the first logs.
 - `require_joystick: true` means the robot will not move autonomously without a joystick

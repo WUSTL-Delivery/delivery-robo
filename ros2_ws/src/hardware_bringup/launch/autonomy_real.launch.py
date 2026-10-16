@@ -26,7 +26,9 @@ map frame is the world frame). The robot settles 0.37 m from its spawn request a
 drop. A fixed map->odom (autonomy.launch.py: the settled pose since delivery-autonomy TDM-39)
 is off by however far the robot is from that pose at the EKF's first fix. Taking both from the
 same fix removes that race. The controller gets hardware.yaml's controller_server values here
-too, so the sim drives with the robot's speeds and stop distance.
+too, so the sim drives with the robot's speeds and stop distance. Not with the robot's vehicle,
+though: hardware.yaml's /** wheelbase and max_steer_rad describe the real robot, and the sim
+controller gets the Gazebo car's (SIM_VEHICLE) instead.
 """
 import os
 
@@ -40,6 +42,12 @@ from launch_ros.actions import Node
 # latitude, longitude, elevation. gps_datum_tf inverts Gazebo's NavSat sensor with it.
 SIM_WORLD_ORIGIN = (38.64817527, -90.30128152, 0.0)
 SIM_GATED_GPS_TOPIC = '/gps/fix_gated'
+# The Gazebo car the controller models with sim:=true: delivery-autonomy's SIM_VEHICLE (its
+# controller defaults; robot.urdf.xacro <wheel_base> 0.50, steering joints +-0.6 rad).
+# hardware.yaml's /** wheelbase and max_steer_rad are the real robot's and would otherwise reach
+# the sim controller.
+SIM_VEHICLE = {'wheelbase': 0.5, 'max_steer_rad': 0.6, 'steer_tau': 0.545, 'drive_tau': 0.01,
+               'max_accel': 5.0}
 
 
 def _nodes(context):
@@ -107,7 +115,8 @@ def _nodes(context):
     )
     # hardware.yaml's controller_server section (speeds, stop distance) in both modes, so the sim
     # drives with the robot's values. use_costmap follows nav2: without Nav2 there is no costmap,
-    # and the controller would cap itself at crawl_speed waiting for one.
+    # and the controller would cap itself at crawl_speed waiting for one. The vehicle model is the
+    # exception: the robot's comes from hardware.yaml's /**, the sim car keeps its own.
     controller = Node(
         package='autonomy',
         executable='controller',
@@ -115,7 +124,8 @@ def _nodes(context):
         output='screen',
         respawn=True,
         respawn_delay=3.0,
-        parameters=[hardware_yaml, {**real_time, 'use_costmap': nav2}],
+        parameters=[hardware_yaml,
+                    {**real_time, 'use_costmap': nav2, **(SIM_VEHICLE if sim else {})}],
         remappings=[] if sim else [('/cmd_vel', '/cmd_vel_nav')],
     )
     return [datum, state_estimation, global_planner, controller]

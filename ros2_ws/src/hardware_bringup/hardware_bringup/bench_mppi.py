@@ -43,12 +43,24 @@ def main(argv=None):
         cells = np.zeros((400, 400), dtype=np.int8)
         cells[208:215, 228:235] = 100
         costmap = Costmap(cells, 0.1, (-20.0, -20.0), 'odom')
-        fixed = {'lower_bounds': jnp.array([-0.5, -0.6]),
-                 'upper_bounds': jnp.array([v_target, 0.6]),
-                 'obstacle_steps': np.int32(horizon + 1)}
+        max_steer = 0.6
+        fixed = {'obstacle_steps': np.int32(horizon + 1)}
+        try:
+            # Since TDM-41 the controller also passes its vehicle model: the robot's wheelbase and
+            # steering limit (hardware.yaml /**), the sim car's lags. The values do not change the
+            # timing; passing one exercises the same call as the controller's.
+            from autonomy.utils.dynamics import Vehicle
+        except ImportError:
+            print('mppi_step without a vehicle (delivery-autonomy before TDM-41)')
+        else:
+            fixed['vehicle'] = Vehicle(wheelbase=0.36322, max_steer_rad=0.4363)
+            max_steer = fixed['vehicle'].max_steer_rad
+        fixed.update(lower_bounds=jnp.array([-0.5, -max_steer]),
+                     upper_bounds=jnp.array([v_target, max_steer]))
 
     def extra_args():
-        """Return the arguments mppi_step takes since TDM-33, window cut as by the controller."""
+        """Return the arguments mppi_step takes since TDM-33 (and the vehicle since TDM-41), window
+        cut as by the controller."""
         if crop_window is None:
             return {}
         return {**fixed, 'window': crop_window(costmap, x0, (0.0, 0.0, 0.0))}

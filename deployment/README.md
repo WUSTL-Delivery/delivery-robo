@@ -114,7 +114,8 @@ starts `run_simulator.sh` (Gazebo + robot spawn + `ros_gz_bridge`) and `simulati
 (robot state publisher, ground truth, RViz) instead of the sensors and the drive chain. The
 autonomy nodes come from the same `autonomy_real.launch.py` as on the robot, with sim time, the
 sim's `/gps/fix`, `/imu/data` and `/odom`, the controller on the sim's `/cmd_vel` with the
-robot's `controller_server` values from `hardware.yaml`, and `gps_datum_tf` in its `local_enu`
+robot's `controller_server` values from `hardware.yaml` (but the Gazebo car's wheelbase and
+steering limit, not the robot's), and `gps_datum_tf` in its `local_enu`
 mode: it gates the sim's `/gps/fix` and publishes `map→odom` from the first fix the EKF takes, as
 that fix's Gazebo world position. No joystick, `twist_mux` or bridge. `startup.sh` does not
 pass `nav2`, so the controller runs without the costmap (`use_costmap` false). To test with
