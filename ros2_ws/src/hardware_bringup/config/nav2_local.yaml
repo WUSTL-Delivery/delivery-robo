@@ -1,0 +1,168 @@
+# Nav2 for local path planning (TDM-21): map_server + planner_server's global
+# costmap + lifecycle manager. Loaded by launch/nav2_local.launch.py, which
+# patches this file before passing it on (it cannot reach the costmap sub-node
+# inside planner_server any other way):
+#   map:=        -> map_server.yaml_filename
+#   sources:=    -> obstacle_layer.observation_sources and each source's
+#                   marking/clearing (fused | separate | lidar, see below)
+#   scan_topic:= -> obstacle_layer.lidar.topic
+#   sim:=true    -> use_sim_time on every node, lidar on /scan, sources lidar
+# Edit values here; edit the source wiring in the launch file.
+#
+# The costmap is built from three inputs:
+#   * the boundary map (delivery-autonomy autonomy/maps/boundary.yaml, frame
+#     map: free within 1.5 m of each OSM walkway edge, occupied elsewhere),
+#     served by map_server on /map and copied in by static_layer;
+#   * the EKF: odom -> base_link from delivery-autonomy state_estimation, plus
+#     map -> odom (gps_datum_tf on the robot, a static transform in the sim);
+#   * the scans, in obstacle_layer.
+# Frame: odom, rolling 40 x 40 m around base_link. odom rather than map
+# because obstacle_layer filters heights in the costmap's global frame and the
+# sim's map -> odom has z = 2 (scans would sit at z ~2.4 in map and be dropped
+# by max_obstacle_height); the EKF's base_link is at z = 0 in odom.
+# static_layer still lines the map up through TF (incl. map -> odom yaw), cell
+# by cell, because the window is rolling.
+#
+# Output: /global_costmap/costmap (nav_msgs/OccupancyGrid, frame odom).
+
+map_server:
+  ros__parameters:
+    use_sim_time: false
+    yaml_filename: ""         # set by the launch from map:=
+    topic_name: map           # -> /map, transient local
+    frame_id: map
+
+# Placeholder only: TDM-22 tunes the Smac Hybrid-A* parameters (motion model,
+# turning radius, planning time, ...). Until then the plugin runs on defaults.
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner::SmacPlannerHybrid"   # TDM-22 tunes it
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      global_frame: odom
+      robot_base_frame: base_link
+      transform_tolerance: 0.3    # s; the Pi is slow, be lenient on TF lookups
+      update_frequency: 4.0       # Hz; planning runs at ~1 Hz
+      publish_frequency: 1.0      # Hz; full grid every time (RViz, dumps)
+      always_send_full_costmap: true
+      rolling_window: true
+      width: 40                   # m, centred on base_link
+      height: 40
+      resolution: 0.1             # m/cell, same as the boundary map
+      track_unknown_space: true   # off-map cells stay unknown (planner: not allowed)
+      # Chassis 0.8 x 0.4 m; the wheels stick out past it (URDF track 0.55 +
+      # wheel 0.08), hence +/-0.32 m. TODO(TDM-13): real measurement.
+      footprint: "[[0.40, 0.32], [0.40, -0.32], [-0.40, -0.32], [-0.40, 0.32]]"
+      footprint_padding: 0.0
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        enabled: true
+        map_topic: /map
+        map_subscribe_transient_local: true
+        subscribe_to_updates: false
+        # Must stay false (verified on Jazzy nav2_costmap_2d 1.3.13): StaticLayer
+        # clears the footprint in its own map-frame copy of the map but with
+        # the footprint's odom coordinates, so with map -> odom != identity it
+        # punches robot-shaped holes in the walls at (robot pose in odom) read
+        # as map coordinates, never under the robot, and the holes stay until
+        # map_server republishes. A pose on a wall therefore stays lethal: the
+        # planner refuses to start there, which is the safe failure.
+        footprint_clearing_enabled: false
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        footprint_clearing_enabled: true
+        combination_method: 1      # max with the static layer: walls stay walls
+        # The launch replaces observation_sources and each source's marking /
+        # clearing per sources:=
+        #   fused    : fused marks; lidar and camera only clear (default on the robot)
+        #   separate : lidar and camera both mark and clear
+        #   lidar    : lidar marks and clears (default with sim:=true, on /scan)
+        observation_sources: fused lidar camera
+        # expected_update_rate on every source is the longest gap (s) between
+        # messages before the costmap reports itself not current; planner_server
+        # then refuses to plan, so a dead sensor stops the robot.
+
+        # my_bringup scan_fusion: lidar + camera obstacle endpoints in one
+        # LaserScan (base_link, 360 bins, range_max 12). Missing bins are NaN,
+        # not free space, so it must never clear.
+        fused:
+          topic: /scan_fused
+          data_type: "LaserScan"
+          sensor_frame: ""         # header frame
+          marking: true
+          clearing: false
+          inf_is_valid: false
+          obstacle_max_range: 8.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: -1.0   # planar scan in base_link (z 0)
+          expected_update_rate: 1.0
+          observation_persistence: 0.0
+
+        # RPLidar C1 after laser_filters (/scan_filtered, lidar_link, ~10 Hz).
+        # Sim: Gazebo's /scan. inf = no return = free out to raytrace_max_range,
+        # so a person who walks away is cleared even with nothing behind them
+        # (the sim publishes inf; on the robot laser_filters' range filter
+        # currently turns inf into NaN, which neither marks nor clears).
+        lidar:
+          topic: /scan_filtered    # scan_topic:= / sim:=true override
+          data_type: "LaserScan"
+          sensor_frame: ""
+          marking: true
+          clearing: true
+          inf_is_valid: true
+          obstacle_max_range: 8.0  # < range_max (C1 12+ m, sim 20 m): inf never marks
+          obstacle_min_range: 0.0
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          expected_update_rate: 0.5
+          observation_persistence: 0.0
+
+        # RealSense via my_bringup depth_obstacles: floor-removed obstacles as
+        # a LaserScan in base_link. +inf bins mean "floor seen, nothing in the
+        # way" and arrive as range_max 4.0, so obstacle_max_range stays below it.
+        camera:
+          topic: /camera/scan
+          data_type: "LaserScan"
+          sensor_frame: ""
+          marking: true
+          clearing: true
+          inf_is_valid: true
+          obstacle_max_range: 3.9
+          obstacle_min_range: 0.0
+          raytrace_max_range: 3.0  # don't clear past where the floor is reliably seen
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: -1.0   # heights already filtered by depth_obstacles
+          expected_update_rate: 1.0
+          observation_persistence: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.8      # m; > circumscribed radius 0.51
+        cost_scaling_factor: 3.0
+
+lifecycle_manager_nav2_local:
+  ros__parameters:
+    use_sim_time: false
+    autostart: true
+    # The launch sets node_names (and bond_timeout 0 when it falls back to the
+    # standalone costmap, which never opens a bond).
+    node_names: ["map_server", "planner_server"]
+    bond_timeout: 4.0
