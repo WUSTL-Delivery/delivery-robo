@@ -73,11 +73,13 @@ is not used.
 | `map_server` | Serves the boundary map on `/map` (frame `map`, transient local). |
 | `planner_server` | Owns the costmap (`/global_costmap/global_costmap`; plugins static, obstacle, inflation) and answers `/compute_path_to_pose` with Smac Hybrid-A\* (`planner_id` `GridBased`, Dubins, no reversing). If `nav2_planner` is not installed, the launch file runs the standalone costmap under the same name instead, and nothing plans. |
 | `lifecycle_manager_nav2_local` | Configures and activates the two nodes above (`autostart`). |
-| `local_planner` | Turns a goal into a route. It replans a path to a carrot ~12 m ahead every second, transforms the path to `map`, publishes it on `/nav/local_plan` and, with `drive:=true`, sends it to `/follow_path`. When planning fails it sends one empty path (the follower stops) and then tries carrots ±2 m and ±4 m along the route. It stops replanning within 0.5 m of the goal. |
+| `local_planner` | Turns a goal into a route. Twice a second it plans a path to a carrot ~12 m ahead on the route, transforms the path to `map`, publishes it on `/nav/local_plan` and, with `drive:=true`, sends it to `/follow_path`. When planning fails (a loop counts as a failure) it sends one empty path (the follower stops) and then tries carrots ±2 m and ±4 m along the route. Within 2 m of the goal, once the last path ends there, it stops replanning and lets the follower finish that path. |
 
-All parameters are in `config/nav2_local.yaml`. `launch/nav2_local.launch.py` patches that file
-for its arguments. The local_planner parameters are the node's defaults, apart from `drive`,
-`use_sim_time`, and `planner_id`, which is taken from planner_server's `planner_plugins`.
+The Nav2 parameters are in `config/nav2_local.yaml`. `launch/nav2_local.launch.py` patches that
+file for its arguments. local_planner has no section there: it runs on its own defaults (see
+[local_planner parameters](#local_planner-parameters)), apart from `drive`, `use_sim_time`, and
+`planner_id`, which the launch file sets from `drive:=`, `sim:=` and planner_server's
+`planner_plugins`.
 
 ### Running
 
@@ -131,6 +133,39 @@ A zero quaternion on `/goal_pose` means "no final heading". Watch `/nav/local_pl
 `map`) and `/global_costmap/costmap` (OccupancyGrid, frame `odom`) in RViz. With `drive:=false`
 the plan is published but nothing moves.
 
+### local_planner parameters
+
+Every parameter the node declares, with its default. The launch file passes only `drive`,
+`planner_id` and `use_sim_time`. To change any other, start the launch file with
+`local_planner:=false` and run the node yourself:
+
+```sh
+ros2 run hardware_bringup local_planner --ros-args -p drive:=true -p rate_hz:=1.0 [-p use_sim_time:=true]
+```
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `rate_hz` | `2.0` | Replans per second. Read once at startup. Only one request is in flight, so a plan slower than one period skips ticks. 2.0 since TDM-36: in TDM-25's sim runs the robot passed a centred box 0.154 m away on average at 2 Hz, against 0.096 m at 1 Hz, and each plan takes 2-15 ms. Planner_server's `expected_planner_frequency` matches it. |
+| `lookahead` | `12.0` | m. The carrot sits this far along the route ahead of the robot's progress, clamped to the goal. Keep it well inside the 40 x 40 m rolling costmap and no longer than Smac's `lookup_table_size`. |
+| `carrot_offsets` | `[0.0, 2.0, -2.0, 4.0, -4.0]` | m along the route, added to `lookahead`. After n failures in a row the next carrot uses entry n (0-based, cycling); a success goes back to the first. Along the route because the boundary map is free only within 1.5 m of an OSM edge. An empty list means `[0.0]`. |
+| `final_approach_distance` | `2.0` | m (TDM-28). Once the last path sent ends at the goal and the robot is this close to it, the node stops replanning, drops any request in flight and lets the follower finish that path. It replans again only if the robot gets 0.5 m further out. Closer than ~2 m the forward-only planner answers with 11-13 m loops. In this stretch a new obstacle no longer stops the robot. |
+| `loop_margin` | `5.0` | m (TDM-28). A plan longer than it needs to be by more than this is a failure (reason "loop"). Needed = the straight line to its end, or the route's own arc to the carrot when that is longer. Only checked when the carrot's heading is within 90° of the robot's, so a U-turn to a goal behind the robot is kept. `<= 0` turns the check off. |
+| `goal_tolerance` | `0.5` | m. The goal counts as reached (logged, then forgotten) once the robot is this close and the carrot is at the goal. It does not stop replanning: `final_approach_distance` does. The follower itself stops 0.25 m from the end of its path. |
+| `drive` | `false` | Also send every path and every stop (empty path) to `follow_action`. Without it the node only publishes on `plan_topic`. Set by `drive:=`. |
+| `planner_id` | `GridBased` | The planner_server plugin to ask (`ComputePathToPose` `planner_id`). Set from planner_server's first `planner_plugins` entry. |
+| `planner_timeout` | `5.0` | s. A request with no answer after this long is cancelled and counts as a failure. |
+| `route_spacing` | `0.5` | m. Routes (the OSM route, or the two-point route of a direct goal) are resampled at this spacing. |
+| `progress_window` | `4.0` | m. The robot's progress is its projection onto the next `progress_window` metres of route past the last progress. It never moves backwards, and a route that passes near itself cannot make it jump ahead. |
+| `map_frame` | `map` | Frame of routes, carrots, `plan_topic` and every path sent to the follower (which assumes `map` whatever the header says). |
+| `robot_frame` | `base_link` | The robot pose is the latest `map_frame` → `robot_frame` transform. |
+| `planner_action` | `/compute_path_to_pose` | Nav2 `ComputePathToPose` (planner_server). |
+| `route_action` | `/compute_shortest_path` | delivery-autonomy `ComputePath`: the OSM route for a `goal_node_topic` goal. |
+| `follow_action` | `/follow_path` | delivery-autonomy `FollowPath` (the MPPI controller). Used only with `drive`. |
+| `plan_topic` | `/nav/local_plan` | Every accepted plan (Path in `map_frame`), and an empty Path on every stop. |
+| `goal_topic` | `/goal_pose` | Direct goals (PoseStamped, any frame with a transform to `map_frame`). |
+| `goal_node_topic` | `/nav/goal_node` | OSM node goals (Int64). |
+| `cancel_topic` | `/nav/cancel` | Empty: stop now and forget the goal. |
+
 ### Sim recipe (Lyrical Gazebo + Jazzy Nav2)
 
 The Nix Lyrical shell has no prebuilt Nav2, so Nav2 runs from apt Jazzy in a second terminal.
@@ -173,13 +208,18 @@ What TDM-25 measured in this sim (node 1282043935, 190 m from spawn, 1.5 m/s, 12
   brakes ~0.4 m and stops 0.2-0.28 m past the end. On top of that, the EKF lags ~0.15 m while
   moving and is off by a steady 0.25 m at the goal.
 - About 134 plans per run at 1 Hz (266 at 2 Hz). Each plan takes 2-15 ms. With the stock
-  parameters, no planning failures on an empty route.
+  parameters (local_planner at 1 Hz, the default then), no planning failures on an empty route.
 - A 0.6 m box in the middle of a 3 m corridor is always passed, but only 0.00-0.24 m away. The
   lidar marks only the box's near face, so plans swing back towards the centreline through the
   part of the box nobody has seen yet. A centred box also leaves only 1.2 m gaps: the most a
   0.63 m robot centred in one can keep is 0.27 m. A box 0.45 m off-centre is passed 0.36 m away.
+- That is why local_planner now replans at 2 Hz (TDM-36): the mean clearance past a centred box
+  was 0.154 m at 2 Hz against 0.096 m at 1 Hz. `footprint_padding: 0.1` did not help (0.099 m),
+  added stop paths beside the boxes and turned the slope marks below into corridor-blocking
+  walls (one 4 s stall), so it is not used.
 - At the foot of the route's 2° slopes, the lidar sometimes marks the rising ground 7 m ahead
-  as a line of obstacles across the corridor for about a second.
+  as a line of obstacles across the corridor for about a second. At 1 Hz that never failed a
+  plan; at 2 Hz it caused some NO_VALID_PATH stop paths, but the robot did not halt.
 
 ## Bench checks before the first drive (wheels off the ground)
 

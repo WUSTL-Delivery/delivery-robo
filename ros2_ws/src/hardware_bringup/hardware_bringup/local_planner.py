@@ -11,8 +11,18 @@ Then, at ``rate_hz`` with at most one request in flight, the node puts a carrot 
 metres ahead of the robot's (monotonic) progress along the route, clamped to the final goal,
 and asks Nav2's planner_server for a path to it (``ComputePathToPose``, ``planner_id``). Why a
 carrot instead of the whole route: the costmap is a rolling window around the robot (40 x 40 m),
-so a goal much further than ~20 m is off the costmap; and replanning a short horizon every
+so a goal much further than ~20 m is off the costmap; and replanning a short horizon twice a
 second is what lets the path bend around the obstacles the scans add.
+
+``rate_hz`` defaults to 2.0 (TDM-36). In TDM-25's sim runs the robot passed a box centred in a
+3 m corridor 0.154 m away on average at 2 Hz, against 0.096 m at 1 Hz: the 2D lidar sees a
+box's side faces only late, and the faster replan reacts to them sooner at 1.5 m/s. It costs
+little: each plan takes 2-15 ms. The price: a transient false obstacle (the lidar marking the
+foot of a slope across the corridor for about a second) is more likely to catch a replan, fail
+it and send a stop path (one of the two 2 Hz runs had 4 failures and 2 stop paths but never
+halted; the 1 Hz runs had none). The timer is created once, so the rate is read at startup
+only. A plan that takes longer than one period just skips ticks, because only one request is
+in flight.
 
 The planner answers in its costmap's frame (``odom``; the costmap has to be in ``odom`` because
 the sim's ``map -> odom`` has z = 2 and the obstacle layer filters heights in its global frame).
@@ -107,7 +117,7 @@ class LocalPlanner(Node):
         self._spacing = float(p('route_spacing', 0.5))
         self._window = float(p('progress_window', 4.0))
         self._planner_timeout = float(p('planner_timeout', 5.0))
-        rate_hz = float(p('rate_hz', 1.0))
+        rate_hz = float(p('rate_hz', 2.0))   # TDM-36: 2 Hz cleared obstacles better than 1 Hz (TDM-25)
         planner_action = p('planner_action', '/compute_path_to_pose')
         route_action = p('route_action', '/compute_shortest_path')
         follow_action = p('follow_action', '/follow_path')

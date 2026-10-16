@@ -35,13 +35,13 @@ map_server:
 # Local path planning (TDM-22): Smac Hybrid-A* on the costmap below. The only
 # client is hardware_bringup local_planner: ComputePathToPose, planner_id
 # GridBased, use_start false (start = base_link from TF), goal in map with a
-# heading along the route, ~12 m ahead, at 1 Hz. The path comes back in the
+# heading along the route, ~12 m ahead, at 2 Hz. The path comes back in the
 # costmap frame (odom); local_planner moves it to map for /follow_path.
 # Parameter names checked against nav2_smac_planner 1.3.13 (Jazzy).
 planner_server:
   ros__parameters:
     use_sim_time: false
-    expected_planner_frequency: 1.0   # Hz; local_planner's rate (only a warning threshold)
+    expected_planner_frequency: 2.0   # Hz; local_planner's rate_hz (only a warning threshold)
     planner_plugins: ["GridBased"]    # = local_planner's planner_id
     GridBased:
       plugin: "nav2_smac_planner::SmacPlannerHybrid"
@@ -57,7 +57,8 @@ planner_server:
       motion_model_for_search: "DUBIN"
       minimum_turning_radius: 1.0     # m; real robot 0.78, sim 0.73, so the follower keeps margin
       angle_quantization_bins: 72     # 5 deg heading bins
-      # Search + smoothing share this budget; local_planner replans every 1 s.
+      # Search + smoothing share this budget. local_planner replans every 0.5 s
+      # with one request in flight, so a slower plan only skips replans.
       # Laptop: 2-6 ms for 12 m along a corridor, ~40 ms for a U-turn + loop.
       max_planning_time: 1.0          # s
       max_iterations: 1000000
@@ -106,7 +107,7 @@ global_costmap:
       global_frame: odom
       robot_base_frame: base_link
       transform_tolerance: 0.3    # s; the Pi is slow, be lenient on TF lookups
-      update_frequency: 4.0       # Hz; planning runs at ~1 Hz
+      update_frequency: 4.0       # Hz; planning runs at ~2 Hz
       publish_frequency: 1.0      # Hz; full grid every time (RViz, dumps)
       always_send_full_costmap: true
       rolling_window: true

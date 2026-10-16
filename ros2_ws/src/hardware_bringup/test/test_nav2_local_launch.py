@@ -107,7 +107,7 @@ def test_tdm22_hybrid_astar_planner(tdm21_params):
     assert grid['motion_model_for_search'] == 'DUBIN'    # forward only: the MPPI follower can't drive cusps
     assert grid['minimum_turning_radius'] >= 0.78        # never tighter than the real robot can turn
     assert grid['angle_quantization_bins'] == 72
-    assert 0.0 < grid['max_planning_time'] <= 1.0        # local_planner replans at 1 Hz
+    assert 0.0 < grid['max_planning_time'] <= 1.0        # local_planner replans at 2 Hz
     assert grid['cache_obstacle_heuristic'] is False     # rolling window + live scans
     assert grid['allow_unknown'] is False                # off-map cells are unknown
     assert grid['smooth_path'] is True
