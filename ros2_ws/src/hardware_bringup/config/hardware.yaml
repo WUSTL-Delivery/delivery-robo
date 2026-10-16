@@ -4,12 +4,14 @@
 #
 # Values under /** are used by MORE THAN ONE node and must stay identical for all of them,
 # so they are declared once here. README.md "Calibration" says how to measure each number.
+# wheelbase and max_steer_rad also set the controller's vehicle model (controller_server).
 
 /**:
   ros__parameters:
     wheelbase: 0.36322            # m, rear axle to front axle. URDF: 0.36322, HAL: 0.30. Tape-measure it.
+                                  # Also MPPI's model: the yaw rate it sends is converted back with this
     min_speed_for_steer: 0.05     # m/s floor for the yaw-rate <-> steering conversion (stick steers at standstill)
-    max_steer_rad: 0.4363         # rad road-wheel limit = 25 deg, joystick_node's range
+    max_steer_rad: 0.4363         # rad road-wheel limit = 25 deg, joystick_node's range. Also MPPI's steering limit
 
 arduino_bridge:
   ros__parameters:
@@ -70,6 +72,10 @@ gps_datum_tf:
 # delivery-autonomy's MPPI follower (autonomy controller, delivery-autonomy `dev`). Only the values
 # that differ from its defaults; README.md "Controller parameters" lists every parameter and why.
 # use_costmap is not here: autonomy_real.launch.py sets it from its nav2 argument.
+# Its vehicle model: wheelbase and max_steer_rad come from /** above, the values arduino_bridge
+# converts the controller's yaw rate with. steer_tau, drive_tau and max_accel are not set: the
+# robot's lags are unmeasured, so the controller keeps its defaults (fitted to the sim car).
+# With sim:=true, autonomy_real.launch.py puts the sim car's whole vehicle back (0.5 m, 0.6 rad).
 controller_server:
   ros__parameters:
     max_speed: 1.0                # m/s, cruise speed and forward cap. Default 1.5 = joystick full stick, and
