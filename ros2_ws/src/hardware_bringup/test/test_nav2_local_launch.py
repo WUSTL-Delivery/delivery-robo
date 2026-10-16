@@ -110,7 +110,7 @@ def test_tdm22_hybrid_astar_planner(tdm21_params):
     assert 0.0 < grid['max_planning_time'] <= 1.0        # local_planner replans at 2 Hz
     assert grid['cache_obstacle_heuristic'] is False     # rolling window + live scans
     assert grid['allow_unknown'] is False                # off-map cells are unknown
-    assert grid['smooth_path'] is True
+    assert grid['smooth_path'] is False                  # TDM-42: the smoother pulls paths towards obstacles
     assert grid['tolerance'] == pytest.approx(0.25)
     assert grid['lookup_table_size'] >= 12.0             # m; local_planner's default carrot distance
 
