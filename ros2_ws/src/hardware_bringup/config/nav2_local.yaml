@@ -108,7 +108,10 @@ global_costmap:
       robot_base_frame: base_link
       transform_tolerance: 0.3    # s; the Pi is slow, be lenient on TF lookups
       update_frequency: 4.0       # Hz; planning runs at ~2 Hz
-      publish_frequency: 1.0      # Hz; full grid every time (RViz, dumps)
+      # Hz; full grid every time. The controller's obstacle speed limit reads it
+      # (delivery-autonomy TDM-32). Publishing happens inside the update loop, so
+      # anything >= update_frequency publishes every update: 4 Hz here.
+      publish_frequency: 5.0
       always_send_full_costmap: true
       rolling_window: true
       width: 40                   # m, centred on base_link
