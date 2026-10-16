@@ -27,9 +27,27 @@ Failures (planner rejects/aborts/times out, empty path, no transform): the first
 streak sends one empty path, which the follower treats as "stop now"; the following attempts
 move the carrot along the route by ``carrot_offsets`` (default 0, +2, -2, +4, -4 m, cycling;
 along the route because the boundary map is free only within 1.5 m of an OSM edge). The first
-success ends the streak. Within ``goal_tolerance`` of the final goal the node stops replanning
-and lets the follower finish the last path, which already ends at the goal. ``/nav/cancel``
-(``std_msgs/Empty``) sends an empty path and forgets the goal.
+success ends the streak. ``/nav/cancel`` (``std_msgs/Empty``) sends an empty path and forgets
+the goal.
+
+Finishing (TDM-28). The planner only has forward Dubins moves with a 1.0 m turning radius, and
+TDM-22 measured what it does with a goal too close for an S-curve (0.5 m to the side and ~1 m
+ahead): it does not fail, it answers with an 11-13 m loop that circles back to the goal, which
+the follower would drive. Three things keep that from reaching the follower:
+
+* Final approach: once the path last forwarded already ends at the final goal and the robot is
+  within ``final_approach_distance`` of it, the node stops replanning (and drops any request
+  still in flight) and lets the follower finish that path, which was planned from further out.
+  It replans again only if the robot ends up 0.5 m further out than that. The price: in that
+  last stretch a new obstacle no longer makes planning fail, so it no longer stops the robot.
+  ``goal_tolerance`` now only decides when the goal counts as reached (logged, then forgotten).
+* Loops: a plan more than ``loop_margin`` longer than it needs to be (than the straight line to
+  its end, or the route's own arc to the carrot when that is longer) is a planning failure,
+  reason "loop", when the carrot's heading is within 90 deg of the robot's. A goal behind the
+  robot that faces back still gets its forward U-turn. ``loop_margin <= 0`` turns this off.
+* Duplicates: consecutive poses less than 1 cm apart (Smac can repeat its last pose) are merged
+  before a path is published or forwarded; the follower derives headings from segment
+  directions, and a zero-length segment has none.
 
 Runs on a single-threaded executor: every action call is asynchronous (done-callbacks), nothing
 blocks a callback, and TF is read with the latest-available lookup.
@@ -50,7 +68,18 @@ from shared_types.action import ComputePath, FollowPath
 from std_msgs.msg import Empty, Int64
 from tf2_ros import Buffer, TransformException, TransformListener
 
-from hardware_bringup.route import Route, quaternion_to_yaw, transform_pose, yaw_to_quaternion
+from hardware_bringup.route import (
+    Route,
+    angle_difference,
+    drop_duplicate_points,
+    in_final_approach,
+    is_loop,
+    loop_excess,
+    path_length,
+    quaternion_to_yaw,
+    transform_pose,
+    yaw_to_quaternion,
+)
 
 _STATUS_NAMES = {
     getattr(GoalStatus, n): n[len('STATUS_'):].lower() for n in dir(GoalStatus) if n.startswith('STATUS_')
@@ -73,6 +102,8 @@ class LocalPlanner(Node):
         self._lookahead = float(p('lookahead', 12.0))
         self._offsets = [float(o) for o in p('carrot_offsets', [0.0, 2.0, -2.0, 4.0, -4.0])] or [0.0]
         self._goal_tolerance = float(p('goal_tolerance', 0.5))
+        self._approach_distance = float(p('final_approach_distance', 2.0))
+        self._loop_margin = float(p('loop_margin', 5.0))
         self._spacing = float(p('route_spacing', 0.5))
         self._window = float(p('progress_window', 4.0))
         self._planner_timeout = float(p('planner_timeout', 5.0))
@@ -91,6 +122,8 @@ class LocalPlanner(Node):
         self._inflight = None      # the one outstanding ComputePathToPose request (a dict), or None
         self._failures = 0         # consecutive planning failures
         self._stop_sent = False    # one empty path per failure streak
+        self._ends_at_goal = False   # the path last forwarded ends at the final goal
+        self._final_approach = False  # stopped replanning near the goal (see in_final_approach)
         self._log_next_plan = True
         self._last_plan_log = 0.0
         self._plans = 0
@@ -110,6 +143,7 @@ class LocalPlanner(Node):
             f'local_planner: {goal_topic} | {goal_node_topic} -> {route_action}; carrot {self._lookahead} m '
             f'-> {planner_action} ({self._planner_id}) at {rate_hz} Hz -> {plan_topic} (frame {self._map_frame})'
             + (f' -> {follow_action}' if self._drive else ' [drive:=false, plan only]')
+            + f'; final approach {self._approach_distance} m, loop_margin {self._loop_margin} m'
         )
 
     def _declare(self, name, default):
@@ -122,14 +156,19 @@ class LocalPlanner(Node):
         return ((t.translation.x, t.translation.y, t.translation.z),
                 (t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w))
 
-    def _robot_xy(self):
+    def _robot_pose(self):
+        """``(x, y, yaw)`` of the robot in the map frame, or None without a transform."""
         try:
-            (x, y, _), _ = self._lookup(self._map_frame, self._robot_frame)
+            (x, y, _), q = self._lookup(self._map_frame, self._robot_frame)
         except TransformException as ex:
             self.get_logger().warning(
                 f'no {self._map_frame}->{self._robot_frame} transform: {ex}', throttle_duration_sec=5.0)
             return None
-        return x, y
+        return x, y, quaternion_to_yaw(q)
+
+    def _robot_xy(self):
+        pose = self._robot_pose()
+        return pose[:2] if pose is not None else None
 
     def _to_map(self, path):
         """Copy of ``path`` with every pose transformed into the map frame."""
@@ -165,6 +204,8 @@ class LocalPlanner(Node):
         self._progress = 0.0
         self._failures = 0
         self._stop_sent = False
+        self._ends_at_goal = False
+        self._final_approach = False
         self._log_next_plan = True
         self._abandon_plan()
         return self._goal_gen
@@ -253,17 +294,33 @@ class LocalPlanner(Node):
         route = self._route
         if route is None:
             return
-        robot = self._robot_xy()
-        if robot is None:
+        pose = self._robot_pose()
+        if pose is None:
             return
-        self._progress = route.advance(*robot, self._progress, self._window)
+        rx, ry, ryaw = pose
+        self._progress = route.advance(rx, ry, self._progress, self._window)
         remaining = route.length - self._progress
-        to_goal = math.hypot(route.end[0] - robot[0], route.end[1] - robot[1])
+        to_goal = math.hypot(route.end[0] - rx, route.end[1] - ry)
         if to_goal <= self._goal_tolerance and remaining <= self._lookahead:
             self.get_logger().info(
                 f'goal reached: {to_goal:.2f} m from ({route.end[0]:.2f}, {route.end[1]:.2f}) '
-                f'(tolerance {self._goal_tolerance} m); stopped replanning, the follower finishes the last path')
+                f'(tolerance {self._goal_tolerance} m); goal cleared, the follower finishes the last path')
             self._new_goal()
+            return
+
+        approach = in_final_approach(to_goal, self._approach_distance, self._ends_at_goal, self._final_approach)
+        if approach != self._final_approach:
+            self._final_approach = approach
+            if approach:
+                self._abandon_plan()  # its answer could only replace a path that already ends at the goal
+                self.get_logger().info(
+                    f'final approach: {to_goal:.2f} m from the goal (final_approach_distance '
+                    f'{self._approach_distance} m) and the last path ends there; stopped replanning, '
+                    f'the follower finishes it')
+            else:
+                self.get_logger().warning(
+                    f'left the final approach ({to_goal:.2f} m from the goal); replanning')
+        if approach:
             return
 
         if self._inflight is not None:
@@ -290,7 +347,8 @@ class LocalPlanner(Node):
         goal.use_start = False
 
         req = {'gen': self._goal_gen, 'sent': time.monotonic(), 'handle': None,
-               'carrot': (x, y, s, offset), 'progress': self._progress, 'remaining': remaining}
+               'carrot': (x, y, s, offset), 'carrot_yaw': yaw, 'robot_yaw': ryaw,
+               'progress': self._progress, 'remaining': remaining}
         self._inflight = req
         self._planner.send_goal_async(goal).add_done_callback(lambda f: self._on_plan_accepted(f, req))
 
@@ -331,13 +389,32 @@ class LocalPlanner(Node):
             self._on_plan_failure(f'cannot transform the path from {src!r} to {self._map_frame}: {ex}')
             return
 
+        points = [(ps.pose.position.x, ps.pose.position.y) for ps in path.poses]
+        keep = drop_duplicate_points(points)
+        dropped = len(points) - len(keep)
+        if dropped:
+            path.poses = [path.poses[i] for i in keep]
+            points = [points[i] for i in keep]
+        x, y, s, offset = req['carrot']
+        route_arc = s - req['progress']  # the route's own length to the carrot; a path may need that much
+        if self._loop_margin > 0.0 and is_loop(
+                points, req['robot_yaw'], req['carrot_yaw'], self._loop_margin, route_arc):
+            (x0, y0), (x1, y1) = points[0], points[-1]
+            turn = math.degrees(angle_difference(req['carrot_yaw'], req['robot_yaw']))
+            self._on_plan_failure(
+                f'loop: {path_length(points):.1f} m path to a carrot {math.hypot(x1 - x0, y1 - y0):.1f} m away '
+                f'({route_arc:.1f} m along the route), {loop_excess(points, route_arc):.1f} m more than needed '
+                f'> loop_margin {self._loop_margin} m; carrot heading {turn:+.0f} deg off the robot heading')
+            return
+
         recovered = self._failures > 0
         self._failures = 0
         self._stop_sent = False
         self._plans += 1
         self._plan_pub.publish(path)
-        if self._drive:
-            self._send_follow(path, 'plan')
+        forwarded = self._send_follow(path, 'plan') if self._drive else True
+        if forwarded:
+            self._ends_at_goal = self._route.reaches_end(s)
 
         # The first plan of a goal and the first after a failure streak always log; the rest every 5 s.
         # (rclpy refuses a call site whose throttle changes between calls, hence the manual throttle.)
@@ -346,13 +423,14 @@ class LocalPlanner(Node):
             return
         self._log_next_plan = False
         self._last_plan_log = now
-        x, y, s, offset = req['carrot']
         a, b = result.path.poses[0].pose.position, result.path.poses[-1].pose.position
         c, d = path.poses[0].pose.position, path.poses[-1].pose.position
         self.get_logger().info(
             f'plan {self._plans}: {len(path.poses)} poses, {src} ({a.x:.2f}, {a.y:.2f})..({b.x:.2f}, {b.y:.2f}) '
             f'-> {self._map_frame} ({c.x:.2f}, {c.y:.2f})..({d.x:.2f}, {d.y:.2f}); carrot ({x:.2f}, {y:.2f}) '
             f'offset {offset:+.1f} m, progress {req["progress"]:.1f}, remaining {req["remaining"]:.1f} m'
+            + (f', {dropped} duplicate poses dropped' if dropped else '')
+            + (' [ends at the goal]' if self._route.reaches_end(s) else '')
             + (' [recovered]' if recovered else ''))
 
     def _on_plan_failure(self, reason):
@@ -369,18 +447,21 @@ class LocalPlanner(Node):
         empty = Path()
         empty.header.stamp = self.get_clock().now().to_msg()
         empty.header.frame_id = self._map_frame
+        self._ends_at_goal = False
         self._plan_pub.publish(empty)
         if self._drive:
             self._send_follow(empty, f'stop ({why})')
         self.get_logger().info(f'stop: empty path sent ({why})' + ('' if self._drive else ' [drive:=false]'))
 
     def _send_follow(self, path, what):
+        """Send ``path`` to the follower; False if there is no follower server to send it to."""
         if not self._follower.server_is_ready():
             self.get_logger().warning(
                 f'no path follower server; {what} not sent', throttle_duration_sec=5.0)
-            return
+            return False
         fut = self._follower.send_goal_async(FollowPath.Goal(path=path))
         fut.add_done_callback(lambda f: self._on_follow_accepted(f, what))
+        return True
 
     def _on_follow_accepted(self, fut, what):
         if not fut.result().accepted:

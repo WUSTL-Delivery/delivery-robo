@@ -1,11 +1,18 @@
-"""Local-planner geometry tests: resampling, monotonic progress, carrot, odom -> map transform."""
+"""Local-planner geometry tests: resampling, monotonic progress, carrot, odom -> map transform,
+and (TDM-28) finishing near the goal: final approach, loop rejection, duplicate poses."""
 import math
 
 import pytest
 
 from hardware_bringup.route import (
     Route,
+    angle_difference,
     cumulative_lengths,
+    drop_duplicate_points,
+    in_final_approach,
+    is_loop,
+    loop_excess,
+    path_length,
     quaternion_to_yaw,
     resample,
     rotate_vector,
@@ -198,3 +205,121 @@ def test_rotation_preserves_length():
     q = yaw_to_quaternion(2.2)
     v = rotate_vector(q, (3.0, -4.0, 1.0))
     assert math.sqrt(sum(c * c for c in v)) == pytest.approx(math.sqrt(26.0))
+
+
+# ----------------------------------------------------------------------------------------------
+# TDM-28: finishing near the goal. The paths are TDM-22's Smac Hybrid-A* answers on the boundary
+# map's 3 m corridor (map x, y, sampled every ~0.5 m; robot heading 84 deg).
+
+TDM28_ROBOT_YAW = math.radians(84.0)
+
+# robot 0.5 m left of the centreline, goal 1.12 m ahead on it: a 12.69 m loop instead of a failure
+TDM28_NEAR_LOOP = [
+    (-93.79, 2.05), (-93.85, 2.56), (-93.95, 3.07), (-94.05, 3.57), (-93.97, 4.19), (-93.54, 4.61),
+    (-92.94, 4.67), (-92.45, 4.32), (-92.30, 3.74), (-92.55, 3.18), (-93.07, 2.78), (-93.52, 2.52),
+    (-93.92, 2.22), (-94.25, 1.67), (-94.24, 1.05), (-93.88, 0.55), (-93.31, 0.39), (-92.77, 0.62),
+    (-92.49, 1.09), (-92.53, 1.62), (-92.81, 2.10), (-93.14, 2.57), (-93.19, 2.99),
+]
+# the same start with the goal 1.58 m ahead: an S-curve fits
+TDM28_NEAR_S_CURVE = [(-93.79, 2.05), (-93.59, 2.59), (-93.27, 3.08), (-93.14, 3.49)]
+# goal 5 m behind the robot, facing back (264 deg): a forward U-turn, 12.42 m; Smac repeated the
+# last pose (headings -100 and -95 deg at the same point)
+TDM28_U_TURN = [
+    (-93.30, 2.00), (-93.12, 2.49), (-92.81, 2.91), (-92.54, 3.35), (-92.32, 3.80), (-92.29, 4.43),
+    (-92.64, 4.92), (-93.22, 5.07), (-93.76, 4.82), (-94.04, 4.27), (-94.01, 3.60), (-93.92, 3.10),
+    (-93.85, 2.58), (-93.84, 2.06), (-93.86, 1.54), (-93.87, 1.02), (-93.85, 0.51), (-93.81, -0.00),
+    (-93.79, -0.63), (-93.80, -1.22), (-93.80, -1.80), (-93.81, -2.39), (-93.82, -2.97), (-93.82, -2.97),
+]
+
+
+def test_tdm28_near_goal_loop_is_rejected():
+    assert path_length(TDM28_NEAR_LOOP) > 10.0
+    assert loop_excess(TDM28_NEAR_LOOP) > 9.0
+    assert is_loop(TDM28_NEAR_LOOP, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW, margin=5.0)
+    # the goal heading only has to be within 90 deg of the robot's
+    assert is_loop(TDM28_NEAR_LOOP, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW + math.radians(80.0), margin=5.0)
+
+
+def test_tdm28_s_curve_to_a_near_goal_passes():
+    assert loop_excess(TDM28_NEAR_S_CURVE) == pytest.approx(0.0, abs=0.1)
+    assert not is_loop(TDM28_NEAR_S_CURVE, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW, margin=5.0)
+
+
+def test_tdm28_u_turn_to_a_goal_behind_passes():
+    # 7+ m longer than the straight line, like a loop, but the goal faces the other way
+    assert loop_excess(TDM28_U_TURN) > 5.0
+    assert not is_loop(TDM28_U_TURN, TDM28_ROBOT_YAW, math.radians(264.0), margin=5.0)
+    assert not is_loop(TDM28_U_TURN, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW + math.radians(91.0), margin=5.0)
+
+
+def test_tdm28_route_arc_is_not_a_detour():
+    # a switchback walkway: forward 4 m, back 4 m, forward 4 m, 2 m between the legs. The carrot
+    # 12 m along the route faces the robot's way and is only ~5.7 m away in a straight line.
+    switchback = [(0.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0), (0.0, 4.0), (4.0, 4.0)]
+    assert is_loop(switchback, 0.0, 0.0, margin=5.0)
+    assert not is_loop(switchback, 0.0, 0.0, margin=5.0, expected_length=path_length(switchback))
+    # an arc shorter than the straight line changes nothing
+    assert loop_excess(TDM28_NEAR_LOOP, expected_length=0.5) == pytest.approx(loop_excess(TDM28_NEAR_LOOP))
+
+
+def test_tdm28_loop_heading_check_wraps_around_pi():
+    assert angle_difference(math.radians(179.0), math.radians(-179.0)) == pytest.approx(math.radians(-2.0))
+    assert is_loop(TDM28_NEAR_LOOP, math.radians(179.0), math.radians(-179.0), margin=5.0)
+    assert not is_loop(TDM28_NEAR_LOOP, math.radians(179.0), math.radians(-1.0), margin=5.0)
+
+
+def test_tdm28_degenerate_paths_are_never_loops():
+    assert loop_excess([]) == 0.0
+    assert loop_excess([(1.0, 1.0)]) == 0.0
+    assert not is_loop([(1.0, 1.0)], 0.0, 0.0, margin=5.0)
+
+
+def test_tdm28_duplicate_last_pose_is_dropped_keeping_the_goal_pose():
+    keep = drop_duplicate_points(TDM28_U_TURN)
+    n = len(TDM28_U_TURN)
+    assert keep == list(range(n - 2)) + [n - 1]   # the goal's own pose (heading -95 deg) survives
+    kept = [TDM28_U_TURN[i] for i in keep]
+    gaps = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(kept, kept[1:])]
+    assert min(gaps) > 0.4                        # no zero-length segment left to take a heading from
+
+
+def test_tdm28_near_duplicates_under_a_centimetre_merge():
+    pts = [(0.0, 0.0), (0.004, 0.0), (0.5, 0.0), (0.5, 0.009), (1.0, 0.0), (1.0, 0.0), (1.005, 0.0)]
+    # the first of each cluster stays, except the final cluster, which keeps its last (goal) pose
+    assert drop_duplicate_points(pts) == [0, 2, 6]
+    # 1 cm and more is a real step
+    assert drop_duplicate_points([(0.0, 0.0), (0.01, 0.0), (0.02, 0.0)]) == [0, 1, 2]
+
+
+def test_tdm28_duplicate_filter_degenerate_inputs():
+    assert drop_duplicate_points([]) == []
+    assert drop_duplicate_points([(2.0, 3.0)]) == [0]
+    # a path that never leaves the robot's spot collapses to its final (goal) pose
+    assert drop_duplicate_points([(2.0, 3.0), (2.0, 3.0), (2.0, 3.0)]) == [2]
+    assert drop_duplicate_points([(0.0, 0.0), (0.5, 0.0), (1.0, 0.0)]) == [0, 1, 2]
+
+
+def test_tdm28_final_approach_needs_a_path_that_ends_at_the_goal():
+    assert in_final_approach(1.5, 2.0, path_ends_at_goal=True)
+    assert in_final_approach(2.0, 2.0, path_ends_at_goal=True)
+    assert not in_final_approach(2.1, 2.0, path_ends_at_goal=True)
+    # the follower's path stops short of the goal (a carrot offset, or an empty stop path): replan
+    assert not in_final_approach(0.8, 2.0, path_ends_at_goal=False)
+
+
+def test_tdm28_final_approach_hysteresis():
+    assert not in_final_approach(2.3, 2.0, True, active=False)
+    assert in_final_approach(2.3, 2.0, True, active=True)         # a swing out stays in it
+    assert in_final_approach(2.5, 2.0, True, active=True, hysteresis=0.5)
+    assert not in_final_approach(2.6, 2.0, True, active=True)     # well out: replan again
+    assert not in_final_approach(1.0, 2.0, False, active=True)
+
+
+def test_tdm28_carrot_reaches_the_goal_once_inside_the_lookahead():
+    route = Route([(0.0, 0.0), (30.0, 0.0)])
+    assert not route.reaches_end(route.carrot_s(10.0, 12.0))
+    assert route.reaches_end(route.carrot_s(18.0, 12.0))
+    assert route.reaches_end(route.carrot_s(28.0, 12.0, offset=-4.0))
+    # a recovery offset can pull the carrot short of the goal: that path does not finish the job
+    assert not route.reaches_end(route.carrot_s(16.0, 12.0, offset=-4.0))
+    assert Route([(1.0, 1.0)]).reaches_end(0.0)
