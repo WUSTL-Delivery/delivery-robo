@@ -213,11 +213,29 @@ global_costmap:
           expected_update_rate: 1.0
           observation_persistence: 0.0
 
+      # Inflation is what keeps Hybrid-A* in the middle of a corridor (TDM-29). The boundary
+      # map's corridors are 3 m wide (walls 1.5 m from the walkway), so with a radius under
+      # 1.5 m the middle is a zero-cost strip the path wanders in: at 0.8 m (1.4 m strip) 12-18 m
+      # paths drifted up to 0.5-0.6 m off the centreline. Cost = 252 * exp(-k * (d - 0.32)) for
+      # d (m from a wall or scan obstacle) between the inscribed radius 0.32 and the radius; with
+      # 1.8 m / k 2.0 the centreline costs 24 of 252, 0.4 m off 53, 0.8 m off 118, inscribed
+      # (lethal for the footprint) still only the 0.32 m by each wall. Measured with the TDM-22
+      # checks on a straight 3 m corridor (scratch plan_check_tdm29.py):
+      #   radius / k   max |offset| from the centreline   footprint clearance past a 0.6 m
+      #                12 m (2 stretches), 18 m path      obstacle in the middle
+      #   0.8 / 3.0    0.51, 0.60, 0.58 m                 0.22 m
+      #   1.6 / 3.0    0.26, 0.24, 0.28 m                 0.23 m
+      #   1.8 / 2.0    0.19, 0.11, 0.18 m                 0.22-0.23 m (1.6 / 2.0: same in 3 m)
+      #   1.8 / 1.5    0.19, 0.11, 0.18 m                 0.23 m, but 0.18 m (2.0: 0.27) past an
+      #                                                   off-centre 0.8 m obstacle
+      # A start 0.8 m off the centreline still plans and is back within 0.2 m after ~2 m.
+      # Obstacle clearance is set by Smac's path smoother (cost-blind; it cuts towards the
+      # obstacle: 0.31 m with smooth_path false) and cost_penalty, not by inflation.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        inflation_radius: 0.8      # m; > circumscribed radius 0.51
-        cost_scaling_factor: 3.0
+        inflation_radius: 1.8      # m; > the 1.5 m corridor half-width, > circumscribed radius 0.51
+        cost_scaling_factor: 2.0
 
 lifecycle_manager_nav2_local:
   ros__parameters:
