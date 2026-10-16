@@ -1,15 +1,21 @@
-"""Nav2 costmap (and planner_server) from the boundary map, the EKF odom and the scans (TDM-21).
+"""Nav2 local planning: costmap + planner_server + local_planner (TDM-21, TDM-24).
 
     ros2 launch hardware_bringup nav2_local.launch.py                     # robot, sources:=fused
     ros2 launch hardware_bringup nav2_local.launch.py sources:=separate   # lidar + camera, both mark/clear
     ros2 launch hardware_bringup nav2_local.launch.py sources:=lidar scan_topic:=/scan
     ros2 launch hardware_bringup nav2_local.launch.py sim:=true           # sim time, lidar on /scan
+    ros2 launch hardware_bringup nav2_local.launch.py sim:=true drive:=true   # ... and drive the sim
     ros2 launch hardware_bringup nav2_local.launch.py map:=/path/to/boundary.yaml
+    ros2 launch hardware_bringup nav2_local.launch.py local_planner:=false    # costmap + planner only
 
 Starts map_server (the boundary map on /map), planner_server (whose global costmap is the
 costmap: static_layer from /map, obstacle_layer from the scans, inflation; frame odom, rolling
-40 x 40 m around base_link) and a lifecycle manager. Output: /global_costmap/costmap. Parameters
-live in config/nav2_local.yaml; this file only wires the sources.
+40 x 40 m around base_link), a lifecycle manager, and hardware_bringup's local_planner (goal on
+/goal_pose or /nav/goal_node -> ComputePathToPose -> /nav/local_plan, and with drive:=true on to
+delivery-autonomy's /follow_path). Output: /global_costmap/costmap, /nav/local_plan. Parameters
+live in config/nav2_local.yaml; this file only wires the sources. local_planner's planner_id is
+taken from planner_server's first planner_plugins entry, so the two cannot drift apart.
+master_launch.py includes this file in mode:=autonomy with nav2:=true (drive:=true there).
 
 Needs the TF the rest of the stack publishes: map -> odom (gps_datum_tf, or the sim's static
 transform), odom -> base_link (delivery-autonomy state_estimation), base_link -> sensor frames
@@ -27,13 +33,16 @@ parameters on planner_server never reach its costmap sub-node (/global_costmap/g
 Degrades instead of aborting a parent launch: no map found -> logs and starts nothing; Nav2
 packages missing -> logs the apt command; nav2_planner missing -> runs the standalone
 nav2_costmap_2d node under the same name (/global_costmap/global_costmap, same parameters, same
-topic), so the costmap can still be checked before the planner is installed.
+topic), so the costmap can still be checked before the planner is installed (local_planner
+then only waits for the planner action server); nav2_msgs / shared_types missing or a stale
+build without the local_planner executable -> logs and skips local_planner only.
 """
 import copy
 import os
 import tempfile
 
-from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
+from ament_index_python.packages import (
+    get_package_prefix, get_package_share_directory, PackageNotFoundError)
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
@@ -104,6 +113,29 @@ def patch_params(params, *, map_yaml, sources, scan_topic='', sim=False, planner
         manager['node_names'] = ['map_server', STANDALONE_COSTMAP]
         manager['bond_timeout'] = 0.0   # the standalone costmap never opens a bond
     return params
+
+
+def local_planner_params(params, *, sim=False, drive=False):
+    """local_planner's parameters: sim time, drive, and the planner_id planner_server serves."""
+    planner = params.get('planner_server', {}).get('ros__parameters', {})
+    plugins = planner.get('planner_plugins') or ['GridBased']   # Nav2's own default
+    return {'use_sim_time': sim, 'drive': drive, 'planner_id': plugins[0]}
+
+
+def _local_planner_missing():
+    """Why local_planner cannot start here, or '' when it can."""
+    missing = [p for p in ('nav2_msgs', 'shared_types') if not _have(p)]
+    if missing:
+        return (f'missing {", ".join(missing)} (shared_types comes with the delivery-autonomy '
+                'packages; nav2_msgs from apt ros-jazzy-nav2-msgs)')
+    try:
+        exe = os.path.join(get_package_prefix('hardware_bringup'), 'lib', 'hardware_bringup',
+                           'local_planner')
+    except PackageNotFoundError:
+        exe = ''
+    if not os.path.exists(exe):
+        return 'local_planner executable not installed (stale build? rebuild hardware_bringup)'
+    return ''
 
 
 def _role(source):
@@ -186,6 +218,22 @@ def _launch_setup(context):
         output='screen',
         parameters=[patched],
     ))
+
+    if LaunchConfiguration('local_planner').perform(context) == 'true':
+        why_not = _local_planner_missing()
+        if why_not:
+            actions.append(LogInfo(msg=f'[nav2_local] {why_not}; local_planner NOT started'))
+        else:
+            drive = LaunchConfiguration('drive').perform(context) == 'true'
+            actions.append(Node(
+                package='hardware_bringup',
+                executable='local_planner',
+                name='local_planner',
+                output='screen',
+                respawn=True,          # a restart forgets the goal: it never resumes driving by itself
+                respawn_delay=3.0,
+                parameters=[local_planner_params(params, sim=sim, drive=drive)],
+            ))
     return actions
 
 
@@ -210,5 +258,13 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'params_file', default_value=os.path.join(share, 'config', 'nav2_local.yaml'),
             description='Nav2 parameters (map_server, planner_server, global_costmap, lifecycle manager)'),
+        DeclareLaunchArgument(
+            'local_planner', default_value='true', choices=['true', 'false'],
+            description='run hardware_bringup local_planner (/goal_pose or /nav/goal_node -> '
+                        'ComputePathToPose -> /nav/local_plan); false = costmap + planner_server only'),
+        DeclareLaunchArgument(
+            'drive', default_value='false', choices=['true', 'false'],
+            description="local_planner also sends each path to delivery-autonomy's /follow_path (MPPI); "
+                        'false = plan and publish /nav/local_plan only'),
         OpaqueFunction(function=_launch_setup),
     ])

@@ -5,7 +5,10 @@
 #   ~/delivery-robo/deployment/install_autonomy_deps.sh
 #
 # Two layers:
-#   1. apt   - ROS packages the launch files start (joy, twist_mux, tf2 tools) and pip itself;
+#   1. apt   - ROS packages the launch files start (joy, twist_mux, tf2 tools, and the Nav2
+#              pieces hardware_bringup nav2_local.launch.py runs for master_launch nav2:=true:
+#              map_server, planner_server + Smac planner, costmap, lifecycle manager, msgs)
+#              and pip itself;
 #   2. pip   - the whole numeric stack from autonomy-requirements.txt. It is installed as one
 #              consistent numpy-2 set on purpose: apt's pandas/shapely/pyproj are numpy-1 builds
 #              and would not import next to the numpy 2 that current jax requires.
@@ -26,7 +29,9 @@ echo "[deps] apt packages"
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
   python3-pip python3-venv python3-requests \
-  "ros-${ROS_DISTRO}-joy" "ros-${ROS_DISTRO}-twist-mux" "ros-${ROS_DISTRO}-tf2-ros" "ros-${ROS_DISTRO}-tf2-tools"
+  "ros-${ROS_DISTRO}-joy" "ros-${ROS_DISTRO}-twist-mux" "ros-${ROS_DISTRO}-tf2-ros" "ros-${ROS_DISTRO}-tf2-tools" \
+  "ros-${ROS_DISTRO}-nav2-planner" "ros-${ROS_DISTRO}-nav2-smac-planner" "ros-${ROS_DISTRO}-nav2-map-server" \
+  "ros-${ROS_DISTRO}-nav2-costmap-2d" "ros-${ROS_DISTRO}-nav2-lifecycle-manager" "ros-${ROS_DISTRO}-nav2-msgs"
 
 echo "[deps] pip packages from $REQ (user site, PEP 668 override)"
 python3 -m pip install --user --break-system-packages --upgrade pip
