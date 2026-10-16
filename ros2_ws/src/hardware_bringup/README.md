@@ -1,7 +1,8 @@
 # hardware_bringup
 
 Glue between the real robot and the `delivery-autonomy` stack (checked out as the submodule
-`ros2_ws/src/delivery-autonomy`, never modified). It implements
+`ros2_ws/src/delivery-autonomy`, pinned to our `dev` branch, see
+[delivery-autonomy version](#delivery-autonomy-version); nothing here edits it). It implements
 `plans/autonomy-hardware-integration.md`: the autonomy nodes run on the Pi, a joystick can
 override them at any moment, and one node owns the Arduino's serial port.
 
@@ -45,7 +46,60 @@ First-time setup on the Pi: `deployment/install_autonomy_deps.sh` (Python deps, 
 
 All parameters live in `config/hardware.yaml`. The three geometry numbers under `/**` are shared
 by `arduino_bridge` and `joy_to_cmdvel` and must stay identical for both, which is why they are
-declared once.
+declared once. Its `controller_server` section holds the robot's settings for the
+delivery-autonomy MPPI controller, see [Controller parameters](#controller-parameters).
+
+`autonomy_real.launch.py` arguments: `hardware_params` (default `config/hardware.yaml`),
+`gps_in_topic`, `ekf_cmd_vel_topic`, `sim`, `planner_cache_dir`, and `nav2` (default `false`).
+`nav2` sets the controller's `use_costmap`. master_launch passes its own `sim` and `nav2`.
+
+## delivery-autonomy version
+
+The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `861989d` of
+delivery-autonomy's **`dev`** branch. That is our branch of the upstream code, made while its
+author is away. It adds the controller parameters below, the slow-down and stop for costmap
+obstacles, the taper into the path end, MPPI's costmap cost, the WGS84 GPS projection, and the
+sim fixes. `.gitmodules` says `branch = dev` for documentation only: `git submodule update` checks
+out the pinned commit, not the branch head. Move the pin with `git submodule update --remote`
+or `git update-index --cacheinfo 160000,<sha>,ros2_ws/src/delivery-autonomy`.
+
+**The Pi cannot fetch the pinned commit yet.** `dev` exists only in local checkouts until
+someone pushes it to the submodule's remote (`sebtheiler/delivery-autonomy`). That push is
+human ticket TDM-35, and it has not happened. Until then, `startup.sh`'s submodule update fails
+on the Pi. That failure is not fatal: the Pi logs "submodule update failed" and keeps the
+delivery-autonomy it already has (upstream `2b8924b`, the previous pin). That old controller
+ignores every `controller_server` value in `hardware.yaml`. It drives at a fixed 1.5 m/s, does
+not read the costmap, and can reverse. Before driving autonomously, check that
+`git -C ros2_ws/src/delivery-autonomy rev-parse --short HEAD` on the Pi prints `861989d`.
+
+## Controller parameters
+
+`autonomy_real.launch.py` starts delivery-autonomy's controller (`controller_server`, the MPPI
+path follower behind `/follow_path`) with `config/hardware.yaml` as its parameter file. It does
+this with `sim:=true` too, so the sim drives with the robot's values. The file sets only the three
+values that differ from the controller's defaults. `use_costmap` comes from the launch file's
+`nav2` argument. All but the two topics can be changed at runtime
+(`ros2 param set /controller_server ...`). The controller rejects a value outside the ranges below.
+
+| Parameter | Robot | Default | Why |
+|---|---|---|---|
+| `max_speed` | **1.0** | 1.5 | m/s. Cruise speed, and the cap on every forward command. 1.5 is the joystick's full stick (`pwm_limit` / `pwm_per_mps`), and `pwm_per_mps` is still a guess on an open-loop drive, so nobody knows how fast 1.5 really is. Start lower. MPPI accepts (0, 1.5]. |
+| `min_speed` | **0.0** | -0.5 | m/s. The robot never reverses. Nav2's Hybrid-A\* paths are Dubins (no reversing), and nothing behind the robot is checked. At 1.5 m/s with -0.5, the TDM-33 sim runs had 3-4 stray reverse commands per run (down to -0.13 m/s). In the TDM-34 sim at 1.0 m/s, neither value produced a reverse command, and 0.0 changed neither the goal accuracy nor the box behaviour (see "Sim recipe"). Range [-0.5, 0]. |
+| `stop_distance` | **0.2** | 0.35 | m. The robot stops for an inscribed or lethal costmap cell that is near the path ahead: the path passes within this distance of it, and the robot gets closer to it. The limit falls linearly from `max_speed` at `slow_distance` to 0 at `stop_distance`, and anything under 0.05 m/s counts as a stop. So with these values the robot halts at 0.2 + 0.05 × 1.8 / 1.0 = 0.29 m from such a cell (0.26 m at 1.5 m/s). With 0.35, an obstacle centred in a 3 m corridor (two 1.2 m gaps) stops the robot until someone moves it. With 0.2 it either squeezes past or stops, depending on where the plan puts the robot in the gap (TDM-34 sim: stopped in 3 of 4 runs, passed once). The user approved 0.2 on 2026-10-16. |
+| `use_costmap` | `nav2:=` | true | Slow down and stop for costmap obstacles near the path, and let MPPI pay for costmap cells. Set by the launch file: true only when Nav2 runs. Without a costmap the controller would cap itself at `crawl_speed`. |
+| `slow_distance` | 2.0 | 2.0 | m. Full speed when the nearest obstacle near the path ahead is at least this far away, then linearly down to 0 at `stop_distance`. |
+| `clearance_lookahead` | 3.0 | 3.0 | m of path ahead checked for obstacles. |
+| `costmap_timeout` | 1.0 | 1.0 | s. An older costmap counts as none. Nav2 publishes at 4 Hz (`config/nav2_local.yaml`). |
+| `crawl_speed` | 0.3 | 0.3 | m/s cap while `use_costmap` is on but the costmap is missing or stale. A stale costmap still stops the robot for what it shows. |
+| `goal_decel` | 0.8 | 0.8 | m/s². Braking into the end of the path: speed ≤ √(2·decel·remaining). |
+| `goal_creep_speed` | 0.15 | 0.15 | m/s. The taper's floor, so the robot still reaches the end. |
+| `xy_goal_tolerance` | 0.25 | 0.25 | m (EKF). The path counts as done within this distance of its end... |
+| `yaw_goal_tolerance` | 0.15 | 0.15 | rad. ...and this heading error. |
+| `state_topic`, `costmap_topic` | defaults | `/state_estimation/odom`, `/global_costmap/costmap` | |
+
+Not parameters yet: MPPI's model has the sim robot's geometry (wheelbase 0.5 m, steering limit
+0.6 rad) in delivery-autonomy `utils/dynamics.py`. The robot's are 0.36322 m and 0.4363 rad (see
+"Known limits").
 
 ## Nav2 local planning
 
@@ -174,9 +228,11 @@ terminals: domain 0 has other processes on it, including a fake `/gps/fix` publi
 
 ```sh
 # terminal 1: Lyrical sim + autonomy (delivery-autonomy's nix develop shell, see
-# deployment/README.md "Testing with the sim"); leave nav2 at false here
+# deployment/README.md "Testing with the sim"). nav2:=true starts no Nav2 here (the shell
+# has none, so nav2_local.launch.py logs that and starts nothing), but it sets the
+# controller's use_costmap, so the MPPI slows and stops for terminal 2's costmap
 export ROS_DOMAIN_ID=57
-ros2 launch my_bringup master_launch.py mode:=autonomy sim:=true
+ros2 launch my_bringup master_launch.py mode:=autonomy sim:=true nav2:=true
 
 # terminal 2: apt Jazzy, with a workspace that has hardware_bringup plus delivery-autonomy's
 # shared_types and autonomy built against Jazzy (autonomy installs the boundary map)
@@ -191,12 +247,14 @@ Then send a goal from terminal 2 as shown above. Notes:
   `ros2 daemon stop` and use `--no-daemon`, or a small rclpy script.
 - Topics and actions both work across the two distros: the Jazzy local_planner calls the
   Lyrical `/compute_shortest_path` and `/follow_path` directly, no relay (TDM-25).
-- The robot settles ~0.37 m east of its spawn request after the z = 5 drop, before
-  state_estimation takes its GPS datum, so the sim's hardcoded `map → odom` (−95, 25.5) is off by
-  that much against `/ground_truth/odom`. For ground-truth measurements, publish `map → odom` at
-  the settled pose instead (read `/ground_truth/odom` before starting state_estimation).
-- `ground_truth_node` dies (IndexError) while the robot model is removed (remove + create to
-  reset it); restart it afterwards.
+- `map → odom` matches `/ground_truth/odom`. The robot settles ~0.37 m east of its spawn request
+  after the z = 5 drop. With master_launch `sim:=true`, `autonomy_real.launch.py` runs
+  `gps_datum_tf` with `projection:=local_enu`, which publishes `map → odom` from the same first
+  fix the EKF takes, wherever the robot is then. delivery-autonomy's own `autonomy.launch.py`
+  (since its TDM-39) publishes a fixed `map → odom` at the settled pose (−94.630, 25.504), which
+  is right as long as state_estimation starts after the robot has landed.
+- `ground_truth_node` stays up while the robot model is removed and re-created (a reset); since
+  delivery-autonomy TDM-39 it skips the empty pose messages that used to kill it.
 - The bridge publishes `/clock` at ~1 kHz, so every rclpy node with sim time spends 60-80 % of
   a core on it (local_planner 77 % even when idle). CPU numbers from the sim say nothing about
   the Pi.
@@ -220,6 +278,26 @@ What TDM-25 measured in this sim (node 1282043935, 190 m from spawn, 1.5 m/s, 12
 - At the foot of the route's 2° slopes, the lidar sometimes marks the rising ground 7 m ahead
   as a line of obstacles across the corridor for about a second. At 1 Hz that never failed a
   plan; at 2 Hz it caused some NO_VALID_PATH stop paths, but the robot did not halt.
+
+What TDM-34 measured with delivery-autonomy `dev` (861989d) and this file's
+[controller parameters](#controller-parameters): `max_speed` 1.0, `min_speed` 0.0,
+`stop_distance` 0.2, `use_costmap` true. Same route, local_planner at 2 Hz, footprint clearance
+by ground truth. A box that stopped the robot was removed 10 s later, and the robot then drove
+on.
+
+| Case | Result | Goal error |
+|---|---|---|
+| No box | No slowdowns, mean 0.99 m/s, no reverse command | 0.161 m short |
+| 0.6 m box, centred | Stopped 0.263 m from the box | 0.140 m |
+| 0.6 m box, centred, repeat | Passed at 0.229 m, after a 0.5 s stop | 0.143 m |
+| 0.6 m box, centred, `autonomy_real.launch.py sim:=true nav2:=true` | Stopped 0.236 m from the box | 0.148 m |
+| 0.6 m box, 0.45 m off-centre | Passed at 0.444 m, no slowdown | 0.140 m |
+| `min_speed` -0.5, no box | No reverse command | 0.131 m |
+| `min_speed` -0.5, centred box | Stopped 0.205 m from the box | 0.135 m |
+
+The robot never touched a box. Goal errors are 0.13-0.16 m, against 0.41-0.50 m before the
+taper and the WGS84 fix. TDM-33, at 1.5 m/s with `min_speed` -0.5, got 0.147 m with no box,
+0.219 m (pass) or 0.271 m (stop) at the centred box, and 0.443 m off-centre.
 
 ## Bench checks before the first drive (wheels off the ground)
 
@@ -256,7 +334,7 @@ Every value here was guessed from code that contradicts itself; measure each one
 | `servo_center_deg` | Front jacked up. Publish `/cmd_vel_out` (`-r 10`) with `x: 0.3` and `z: 0.0` while adjusting the value until the wheels point straight. The deployed `joystick_node` used 45; the firmware and the ros2_control HAL use 90. |
 | `servo_deg_per_rad`, `max_steer_rad` | Command a known yaw rate at a known speed (δ = atan(ω·L/v)), read the road-wheel angle with a protractor, take the ratio servo-degrees/road-radian. `max_steer_rad` is the mechanical limit of the linkage. Keep `joy_to_cmdvel`'s copy identical (it is the shared `/**` value). |
 | `pwm_per_mps`, `pwm_limit` | On the ground, publish (`-r 10`) `x:` 0.3, 0.6, 0.9, 1.2, 1.5 m/s in turn and read the steady `/odom` speed for each; fit a line through PWM (= x·pwm_per_mps) versus measured speed and update `pwm_per_mps`. `pwm_limit` caps the drive (110 = today's joystick cap; firmware accepts 255). The drive is open loop, so the fit is the speed control. |
-| `wheelbase` | Tape measure, rear axle centre to front axle centre. The URDF says 0.36322, the HAL 0.30, the autonomy model 0.5 (the autonomy's own 0.5 stays: the bridge absorbs the difference). |
+| `wheelbase` | Tape measure, rear axle centre to front axle centre. The URDF says 0.36322, the HAL 0.30, the autonomy model 0.5 (the autonomy's own 0.5 stays: the bridge absorbs the difference, except in the tightest turns, see "Known limits"). |
 | IMU covariances | `ros2 run imu_package imu_covariance_estimator` while driving, then paste into `imu_node.py`. The committed values were measured at rest. |
 
 ## Known limits
@@ -266,14 +344,26 @@ Every value here was guessed from code that contradicts itself; measure each one
   so start the stack, and restart it after a crash, with the robot **stationary**. A second
   `/gps/fix` subscriber (rosbag, `ros2 topic echo`) defeats the re-derivation; then restart the
   whole stack instead.
-- **Scale.** `map→odom` is rigid. UTM point scale (1.00028) and the equirectangular radius error in
-  the EKF's `latlon2meters` (0.1–0.3 %) leave up to ~0.3 m per 100 m from the datum. Keep test
-  legs short and re-start near the goal area.
+- **Scale.** `map→odom` is rigid. Since delivery-autonomy TDM-38 the EKF's `latlon2meters`
+  projects fixes onto the WGS84 tangent plane at the datum, so what is left is the UTM point
+  scale of the planner's map frame (1.00028, ~2.8 cm per 100 m from the datum) and the change of
+  the grid convergence across campus (~1 cm over 300 m). Before TDM-38 its spherical radius
+  added 0.1–0.3 %. In the sim, the EKF's error against ground truth at the end of the 190 m route
+  fell from 0.246 m to 0.002 m.
 - **Yaw rate on `/odom` is synthesised** from the commanded steering angle (one drive encoder, no
   steering feedback), so that channel partly confirms the EKF's own prediction. A steering angle
   sensor is the real fix.
 - **MPPI.** K=3000 rollouts × T=50 at 10 Hz; `bench_mppi` decides whether the Pi can. `K` lives in
   tangled code (`docs/20260109142710-delivery.org` in delivery-autonomy).
+- **MPPI's geometry is the sim robot's.** delivery-autonomy's dynamics model and `publish_command`
+  use a wheelbase of 0.5 m and a steering limit of 0.6 rad. The robot has 0.36322 m and
+  0.4363 rad. The controller sends speed and yaw rate (ω = v/0.5·tan δ), and `arduino_bridge`
+  turns that back into a steering angle with the real wheelbase (δ = atan(ω·0.36322/v)), so the
+  curvature MPPI asked for is what the robot gets. The exception is the tightest turns: MPPI
+  thinks it can turn on a 0.73 m radius, the robot only on 0.78 m. Any model angle above
+  0.570 rad is clipped to the robot's 0.4363 rad, and the robot then turns up to 6 % wider than
+  MPPI predicted. Nav2 plans with a 1.0 m minimum radius, so this only happens in hard
+  corrections. Both numbers are hardcoded in delivery-autonomy, not parameters.
 - **EKF tuning** assumed the sim's noiseless GPS (`R_gps` = 3 cm) and its 100 Hz IMU. Both are
   tangled constants; expect to retune after the first logs.
 - `require_joystick: true` means the robot will not move autonomously without a joystick

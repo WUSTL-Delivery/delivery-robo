@@ -28,7 +28,8 @@ from ament_index_python.packages import get_package_share_directory, PackageNotF
 # which drives through the MPPI's /follow_path. Goals on /goal_pose or /nav/goal_node. Needs
 # the apt Nav2 packages (deployment/install_autonomy_deps.sh); without them it logs and skips,
 # e.g. in the Lyrical sim shell, where Nav2 runs from a separate Jazzy terminal instead
-# (hardware_bringup/README.md, "Nav2 local planning").
+# (hardware_bringup/README.md, "Nav2 local planning"). nav2 also sets the MPPI controller's
+# use_costmap, so pass nav2:=true there as well when the Jazzy terminal runs Nav2.
 
 # NTRIP caster settings for the ublox_dgnss ntrip client. The committed values are the
 # historical ones (they are in git history already). deployment/ntrip.local.yaml (gitignored,
@@ -257,7 +258,8 @@ def generate_launch_description():
          get_package_share_directory('autonomy')
          autonomy_nodes.append(IncludeLaunchDescription(
              PythonLaunchDescriptionSource(os.path.join(hw_dir, 'launch', 'autonomy_real.launch.py')),
-             launch_arguments={'sim': sim}.items(),
+             # nav2: the controller slows and stops for the costmap only when Nav2 publishes one
+             launch_arguments={'sim': sim, 'nav2': nav2}.items(),
              condition=is_autonomy,
          ))
       except PackageNotFoundError:
