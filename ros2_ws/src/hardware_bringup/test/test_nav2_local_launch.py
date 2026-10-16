@@ -95,3 +95,28 @@ def test_standalone_costmap_fallback(tdm21_params):
     manager = nav2_local.patch_params(tdm21_params, map_yaml=MAP, sources='lidar',
                                       planner=True)['lifecycle_manager_nav2_local']['ros__parameters']
     assert manager['node_names'] == ['map_server', 'planner_server']
+
+
+# ---------------------------------------------------------------- TDM-22: Smac Hybrid-A* planner
+def test_tdm22_hybrid_astar_planner(tdm21_params):
+    planner = tdm21_params['planner_server']['ros__parameters']
+    assert planner['planner_plugins'] == ['GridBased']   # = local_planner's planner_id
+    grid = planner['GridBased']
+    assert grid['plugin'] == 'nav2_smac_planner::SmacPlannerHybrid'
+    assert grid['motion_model_for_search'] == 'DUBIN'    # forward only: the MPPI follower can't drive cusps
+    assert grid['minimum_turning_radius'] >= 0.78        # never tighter than the real robot can turn
+    assert grid['angle_quantization_bins'] == 72
+    assert 0.0 < grid['max_planning_time'] <= 1.0        # local_planner replans at 1 Hz
+    assert grid['cache_obstacle_heuristic'] is False     # rolling window + live scans
+    assert grid['allow_unknown'] is False                # off-map cells are unknown
+    assert grid['smooth_path'] is True
+    assert grid['tolerance'] == pytest.approx(0.25)
+    assert grid['lookup_table_size'] >= 12.0             # m; local_planner's default carrot distance
+
+
+def test_tdm22_patching_leaves_the_planner_alone(tdm21_params):
+    for sim in (False, True):
+        patched = nav2_local.patch_params(tdm21_params, map_yaml=MAP, sources='auto', sim=sim)
+        planner = patched['planner_server']['ros__parameters']
+        assert planner['GridBased'] == tdm21_params['planner_server']['ros__parameters']['GridBased']
+        assert planner['use_sim_time'] is sim
