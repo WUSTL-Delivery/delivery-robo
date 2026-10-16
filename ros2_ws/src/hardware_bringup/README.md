@@ -56,7 +56,7 @@ delivery-autonomy MPPI controller, see [Controller parameters](#controller-param
 
 ## delivery-autonomy version
 
-The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `3f8bc2b` of
+The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `27d1378` of
 delivery-autonomy's **`dev`** branch. That is our branch of the upstream code, made while its
 author is away. It adds the controller parameters below, the slow-down and stop for costmap
 obstacles, the taper into the path end, MPPI's costmap cost, the robot's geometry as controller
@@ -72,7 +72,7 @@ on the Pi. That failure is not fatal: the Pi logs "submodule update failed" and 
 delivery-autonomy it already has (upstream `2b8924b`, the previous pin). That old controller
 ignores every `controller_server` value in `hardware.yaml`. It drives at a fixed 1.5 m/s, does
 not read the costmap, and can reverse. Before driving autonomously, check that
-`git -C ros2_ws/src/delivery-autonomy rev-parse --short HEAD` on the Pi prints `3f8bc2b`.
+`git -C ros2_ws/src/delivery-autonomy rev-parse --short HEAD` on the Pi prints `27d1378`.
 
 ## Controller parameters
 
@@ -88,9 +88,10 @@ the launch file's `nav2` argument. All but the two topics can be changed at runt
 |---|---|---|---|
 | `max_speed` | **1.0** | 1.5 | m/s. Cruise speed, and the cap on every forward command. 1.5 is the joystick's full stick (`pwm_limit` / `pwm_per_mps`), and `pwm_per_mps` is still a guess on an open-loop drive, so nobody knows how fast 1.5 really is. Start lower. MPPI accepts (0, 1.5]. |
 | `min_speed` | **0.0** | -0.5 | m/s. The robot never reverses. Nav2's Hybrid-A\* paths are Dubins (no reversing), and nothing behind the robot is checked. At 1.5 m/s with -0.5, the TDM-33 sim runs had 3-4 stray reverse commands per run (down to -0.13 m/s). In the TDM-34 sim at 1.0 m/s, neither value produced a reverse command, and 0.0 changed neither the goal accuracy nor the box behaviour (see "Sim recipe"). Range [-0.5, 0]. |
-| `stop_distance` | **0.2** | 0.35 | m. The robot stops for an inscribed or lethal costmap cell that is near the path ahead: the path passes within this distance of it, and the robot gets closer to it. The limit falls linearly from `max_speed` at `slow_distance` to 0 at `stop_distance`, and anything under 0.05 m/s counts as a stop. So with these values the robot halts at 0.2 + 0.05 × 1.8 / 1.0 = 0.29 m from such a cell (0.26 m at 1.5 m/s). With 0.35, an obstacle centred in a 3 m corridor (two 1.2 m gaps) stops the robot until someone moves it. With 0.2 it either squeezes past or stops, depending on where the plan puts the robot in the gap (TDM-34 sim: stopped in 3 of 4 runs, passed once). The user approved 0.2 on 2026-10-16. |
+| `stop_distance` | **0.2** | 0.35 | m. The robot stops for an inscribed or lethal costmap cell that is near the path ahead: the path passes within this distance of it, and the robot gets closer to it. The limit falls linearly from `max_speed` at `slow_distance`, never below `obstacle_creep_speed`, and is 0 at `stop_distance`. So the robot creeps up to 0.2 m from such a cell at 0.15 m/s and stops there. Until TDM-40 anything under 0.05 m/s counted as a stop, which halted it at 0.2 + 0.05 × 1.8 / 1.0 = 0.29 m. With 0.35, an obstacle centred in a 3 m corridor (two 1.2 m gaps) stops the robot until someone moves it. With 0.2 it still stopped there in all 6 TDM-40 sim runs, now 0.178-0.195 m from the box. Once the robot is that close, Smac's plans from where it stands pass 0.08-0.16 m from the box's inscribed band, so none keeps `stop_distance` (see "Sim recipe"). The user approved 0.2 on 2026-10-16. |
 | `use_costmap` | `nav2:=` | true | Slow down and stop for costmap obstacles near the path, and let MPPI pay for costmap cells. Set by the launch file: true only when Nav2 runs. Without a costmap the controller would cap itself at `crawl_speed`. |
-| `slow_distance` | 2.0 | 2.0 | m. Full speed when the nearest obstacle near the path ahead is at least this far away, then linearly down to 0 at `stop_distance`. |
+| `slow_distance` | 2.0 | 2.0 | m. Full speed when the nearest obstacle near the path ahead is at least this far away, then linearly down towards 0 at `stop_distance`, but not below `obstacle_creep_speed`. |
+| `obstacle_creep_speed` | 0.15 | 0.15 | m/s. The obstacle limit's floor short of `stop_distance`. The robot keeps moving at least this fast until it is at `stop_distance`, then stops. Without a floor the limit would shrink with the distance left, and the robot would never quite get there. Must be positive. The limit never exceeds `max_speed`. |
 | `clearance_lookahead` | 3.0 | 3.0 | m of path ahead checked for obstacles. |
 | `costmap_timeout` | 1.0 | 1.0 | s. An older costmap counts as none. Nav2 publishes at 4 Hz (`config/nav2_local.yaml`). |
 | `crawl_speed` | 0.3 | 0.3 | m/s cap while `use_costmap` is on but the costmap is missing or stale. A stale costmap still stops the robot for what it shows. |
@@ -305,6 +306,32 @@ on.
 The robot never touched a box. Goal errors are 0.13-0.16 m, against 0.41-0.50 m before the
 taper and the WGS84 fix. TDM-33, at 1.5 m/s with `min_speed` -0.5, got 0.147 m with no box,
 0.219 m (pass) or 0.271 m (stop) at the centred box, and 0.443 m off-centre.
+
+What TDM-40 measured once the speed limit stopped at `stop_distance` itself, with an
+`obstacle_creep_speed` floor of 0.15 m/s (delivery-autonomy `27d1378`). Every run used
+`autonomy_real.launch.py sim:=true nav2:=true` with this file's values, on the same route as
+TDM-34, with the same box removal.
+
+| Case | Result | Goal error |
+|---|---|---|
+| No box | No slowdowns, mean 0.99 m/s, no reverse command. One 0.4 s stop path from a Nav2 planning failure (the slope marks above) | 0.156 m |
+| 0.6 m box, centred, run 1 | Crept at 0.15 m/s from ~0.4 m, stopped 0.191 m from the box | 0.132 m |
+| run 2 | Stopped at 0.209 m, crept on 0.13 m in short restarts, stopped 0.187 m from the box | 0.145 m |
+| run 3 | Stopped at 0.264 m, crept on 0.44 m beside the box, stopped 0.178 m from it (0.176 m while moving) | 0.134 m |
+| run 4 | Stopped at 0.184 m, crept on 1 cm, stopped 0.182 m from the box (0.181 m while moving) | 0.128 m |
+| run 5 | Stopped at 0.193 m, crept on 0.12 m in short restarts, stopped 0.178 m from the box (0.174 m while moving) | 0.150 m |
+| run 6 | Stopped 0.195 m from the box | 0.141 m |
+| 0.6 m box, 0.45 m off-centre | Passed at 0.455 m, no slowdown | 0.151 m |
+
+The centred box stopped the robot every time. It came to rest 0.178-0.195 m from the box,
+against 0.205-0.263 m in TDM-34. It never touched the box, and it drove on only after the box
+was removed. The first stop came where the controller measured 0.19-0.20 m (0.18-0.26 m by
+ground truth). In 4 runs a later path ran beside the box rather than towards it, so the box no
+longer counted, and the robot crept on at 0.15 m/s until the next path stopped it again. Once
+the robot is that close, Smac's paths from its pose pass 0.08-0.16 m from the box's inscribed
+band, and none keeps `stop_distance`. So the robot waits until the box moves. With
+`stop_distance` 0.2, getting through the gap would need paths that keep further from the box,
+not a different speed limit.
 
 ## Bench checks before the first drive (wheels off the ground)
 
