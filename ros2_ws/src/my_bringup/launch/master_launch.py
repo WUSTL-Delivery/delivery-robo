@@ -140,7 +140,7 @@ def generate_launch_description():
    )
 
    # --- robot description (TF) ---------------------------------------------
-   # Every mode: robot_state_publisher for base_footprint -> base_link ->
+   # Every mode: robot_state_publisher for base_link -> base_footprint /
    # lidar_link / imu_link / gps_link. Not with sim:=true, where simulation.launch.py
    # runs the sim model's own. Guarded like ublox so a Pi without
    # robot_description built still launches.
