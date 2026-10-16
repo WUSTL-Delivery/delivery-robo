@@ -19,6 +19,12 @@
   <depend>tf2_msgs</depend>
   <depend>python3-serial</depend>
 
+  <!-- local_planner (TDM-23): Nav2 ComputePathToPose client, TF, and the delivery-autonomy actions. -->
+  <depend>action_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>shared_types</depend>
+
   <!-- Started by the launch files; installed from apt (ros-jazzy-joy, ros-jazzy-twist-mux). -->
   <exec_depend>joy</exec_depend>
   <exec_depend>twist_mux</exec_depend>
