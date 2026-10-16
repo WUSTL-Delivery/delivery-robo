@@ -87,7 +87,7 @@ cd ros2_ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install
 source install/setup.bash && ros2 run hardware_bringup bench_mppi   # MPPI must fit the 100 ms control tick
 ```
 
-The submodule is pinned to delivery-autonomy's `dev` branch (commit `861989d`). The Pi can
+The submodule is pinned to delivery-autonomy's `dev` branch (commit `27d1378`). The Pi can
 fetch that commit only once `dev` is pushed to the submodule's remote. That push is human
 ticket TDM-35, and it has not happened yet. Until then the submodule update fails (non-fatally)
 and the Pi keeps its old checkout, which ignores the controller settings in `hardware.yaml`

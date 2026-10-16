@@ -21,8 +21,8 @@ HARDWARE_YAML = os.path.join(PKG, 'config', 'hardware.yaml')
 # never declares, so a misspelt key in hardware.yaml would otherwise go unnoticed.
 CONTROLLER_PARAMETERS = {
     'max_speed', 'min_speed', 'xy_goal_tolerance', 'yaw_goal_tolerance',
-    'use_costmap', 'slow_distance', 'stop_distance', 'clearance_lookahead', 'costmap_timeout',
-    'crawl_speed', 'goal_decel', 'goal_creep_speed', 'state_topic', 'costmap_topic',
+    'use_costmap', 'slow_distance', 'stop_distance', 'obstacle_creep_speed', 'clearance_lookahead',
+    'costmap_timeout', 'crawl_speed', 'goal_decel', 'goal_creep_speed', 'state_topic', 'costmap_topic',
 }
 # The speeds MPPI samples within (controller.py MPPI_MIN_SPEED, MPPI_MAX_SPEED)
 MPPI_MIN_SPEED, MPPI_MAX_SPEED = -0.5, 1.5
