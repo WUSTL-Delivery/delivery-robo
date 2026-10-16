@@ -150,12 +150,36 @@ source /opt/ros/jazzy/setup.bash && source <jazzy_ws>/install/setup.bash
 ros2 launch hardware_bringup nav2_local.launch.py sim:=true drive:=true
 ```
 
-Then send a goal from terminal 2 as shown above. Two notes:
+Then send a goal from terminal 2 as shown above. Notes:
 
 - The Jazzy and Lyrical `ros2` CLI daemons clash on one domain (XML-RPC "unknown tag"). Run
   `ros2 daemon stop` and use `--no-daemon`, or a small rclpy script.
-- Topics are known to work across the two distros. Actions (`/follow_path`,
-  `/compute_shortest_path`) are not tested across distros yet.
+- Topics and actions both work across the two distros: the Jazzy local_planner calls the
+  Lyrical `/compute_shortest_path` and `/follow_path` directly, no relay (TDM-25).
+- The robot settles ~0.37 m east of its spawn request after the z = 5 drop, before
+  state_estimation takes its GPS datum, so the sim's hardcoded `map → odom` (−95, 25.5) is off by
+  that much against `/ground_truth/odom`. For ground-truth measurements, publish `map → odom` at
+  the settled pose instead (read `/ground_truth/odom` before starting state_estimation).
+- `ground_truth_node` dies (IndexError) while the robot model is removed (remove + create to
+  reset it); restart it afterwards.
+- The bridge publishes `/clock` at ~1 kHz, so every rclpy node with sim time spends 60-80 % of
+  a core on it (local_planner 77 % even when idle). CPU numbers from the sim say nothing about
+  the Pi.
+
+What TDM-25 measured in this sim (node 1282043935, 190 m from spawn, 1.5 m/s, 12 runs):
+
+- The robot always reaches the goal, 0.41-0.50 m from it by ground truth. The follower keeps
+  1.5 m/s until it is within 0.25 m of the path end (by the EKF), then commands 0; the robot
+  brakes ~0.4 m and stops 0.2-0.28 m past the end. On top of that, the EKF lags ~0.15 m while
+  moving and is off by a steady 0.25 m at the goal.
+- About 134 plans per run at 1 Hz (266 at 2 Hz). Each plan takes 2-15 ms. With the stock
+  parameters, no planning failures on an empty route.
+- A 0.6 m box in the middle of a 3 m corridor is always passed, but only 0.00-0.24 m away. The
+  lidar marks only the box's near face, so plans swing back towards the centreline through the
+  part of the box nobody has seen yet. A centred box also leaves only 1.2 m gaps: the most a
+  0.63 m robot centred in one can keep is 0.27 m. A box 0.45 m off-centre is passed 0.36 m away.
+- At the foot of the route's 2° slopes, the lidar sometimes marks the rising ground 7 m ahead
+  as a line of obstacles across the corridor for about a second.
 
 ## Bench checks before the first drive (wheels off the ground)
 
