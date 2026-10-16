@@ -47,6 +47,116 @@ All parameters live in `config/hardware.yaml`. The three geometry numbers under 
 by `arduino_bridge` and `joy_to_cmdvel` and must stay identical for both, which is why they are
 declared once.
 
+## Nav2 local planning
+
+Nav2 builds a costmap from three things: the boundary map (delivery-autonomy's
+`autonomy/maps/boundary.yaml`, free within 1.5 m of every OSM walkway edge, occupied
+elsewhere), the EKF's TF and the scans. It then plans a short local path to a goal with Smac
+Hybrid-A\*. The delivery-autonomy MPPI (`/follow_path`) follows that path. Nav2's own controller
+is not used.
+
+```
+ boundary.yaml ─► map_server ─/map─► static_layer ───┐
+ scans (sources:=) ─────────────────► obstacle_layer ─┼─► inflation_layer = the costmap
+ TF map→odom + EKF odom→base_link ───────────────────┘    (frame odom, rolling 40 x 40 m @ 0.1 m)
+                                                                │
+ /goal_pose (RViz) ──────┐               ComputePathToPose      ▼
+ /nav/goal_node (Int64) ─┼─► local_planner ◄────────────► planner_server (Smac Hybrid-A*)
+ /nav/cancel (Empty) ────┘     │  ▲
+                               │  └── /compute_shortest_path (OSM route, for /nav/goal_node)
+                               ├──► /nav/local_plan (Path in map, always)
+                               └──► /follow_path (drive:=true) ─► controller (MPPI) ─► cmd_vel
+```
+
+| Node | What it does |
+|---|---|
+| `map_server` | Serves the boundary map on `/map` (frame `map`, transient local). |
+| `planner_server` | Owns the costmap (`/global_costmap/global_costmap`; plugins static, obstacle, inflation) and answers `/compute_path_to_pose` with Smac Hybrid-A\* (`planner_id` `GridBased`, Dubins, no reversing). If `nav2_planner` is not installed, the launch file runs the standalone costmap under the same name instead, and nothing plans. |
+| `lifecycle_manager_nav2_local` | Configures and activates the two nodes above (`autostart`). |
+| `local_planner` | Turns a goal into a route. It replans a path to a carrot ~12 m ahead every second, transforms the path to `map`, publishes it on `/nav/local_plan` and, with `drive:=true`, sends it to `/follow_path`. When planning fails it sends one empty path (the follower stops) and then tries carrots ±2 m and ±4 m along the route. It stops replanning within 0.5 m of the goal. |
+
+All parameters are in `config/nav2_local.yaml`. `launch/nav2_local.launch.py` patches that file
+for its arguments. The local_planner parameters are the node's defaults, apart from `drive`,
+`use_sim_time`, and `planner_id`, which is taken from planner_server's `planner_plugins`.
+
+### Running
+
+```sh
+# on the robot: the whole stack plus Nav2 (opt-in until the Pi's CPU budget is measured)
+ros2 launch my_bringup master_launch.py mode:=autonomy nav2:=true [nav2_sources:=separate]
+
+# Nav2 alone, next to a running stack
+ros2 launch hardware_bringup nav2_local.launch.py                 # plan only: /nav/local_plan, nothing drives
+ros2 launch hardware_bringup nav2_local.launch.py drive:=true     # ... and send each path to /follow_path
+ros2 launch hardware_bringup nav2_local.launch.py local_planner:=false   # costmap + planner_server only
+```
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `sources` | `auto` | Scan inputs to the obstacle layer, see below. `auto` = `lidar` with `sim:=true`, else `fused`. master_launch passes `nav2_sources`. |
+| `sim` | `false` | Sim time everywhere, lidar on `/scan`. master_launch passes its own `sim`. |
+| `drive` | `false` | local_planner also sends each path to `/follow_path`. master_launch always sets `true`. |
+| `local_planner` | `true` | Start local_planner. |
+| `map` | autonomy's `share/autonomy/maps/boundary.yaml` | Boundary map yaml. Required when the `autonomy` package is not built. |
+| `scan_topic` | `/scan_filtered` (`/scan` in sim) | The lidar source's topic. |
+| `params_file` | `config/nav2_local.yaml` | Nav2 parameters. |
+
+`sources:=` modes:
+
+| Mode | Marks obstacles | Only clears | Use |
+|---|---|---|---|
+| `fused` | `/scan_fused` | `/scan_filtered`, `/camera/scan` | Robot default. Needs `my_bringup scan_fusion` (branch `feat/lidar-depth-scan-fusion`, not merged yet). Until it is merged, use `separate`. |
+| `separate` | `/scan_filtered`, `/camera/scan` | – | Robot, lidar and depth camera each mark and clear. |
+| `lidar` | `scan_topic` | – | One LaserScan. The sim (`/scan`) or a robot without the camera. |
+
+Every source has an `expected_update_rate`. If a sensor stops publishing, the costmap goes
+stale and planning fails, so the robot stops. It does not plan on an old picture. The launch
+file degrades instead of failing: if the Nav2 packages or the map are missing, it logs the
+reason and starts nothing; if `nav2_msgs` or `shared_types` is missing, it skips only
+local_planner. master_launch therefore runs as before in a shell without Nav2.
+
+### Sending a goal
+
+```sh
+# a pose in map, here 5 m east of the sim's spawn point (RViz "2D Goal Pose" publishes the same)
+ros2 topic pub --once /goal_pose geometry_msgs/msg/PoseStamped \
+  '{header: {frame_id: map}, pose: {position: {x: -90.0, y: 25.5}, orientation: {w: 1.0}}}'
+# an OSM node id: route from /compute_shortest_path, then local paths along it
+ros2 topic pub --once /nav/goal_node std_msgs/msg/Int64 '{data: 1282043935}'
+# stop now (empty path to the follower) and forget the goal
+ros2 topic pub --once /nav/cancel std_msgs/msg/Empty '{}'
+```
+
+A zero quaternion on `/goal_pose` means "no final heading". Watch `/nav/local_plan` (Path, frame
+`map`) and `/global_costmap/costmap` (OccupancyGrid, frame `odom`) in RViz. With `drive:=false`
+the plan is published but nothing moves.
+
+### Sim recipe (Lyrical Gazebo + Jazzy Nav2)
+
+The Nix Lyrical shell has no prebuilt Nav2, so Nav2 runs from apt Jazzy in a second terminal.
+Both terminals talk over DDS on one domain. Use a **private `ROS_DOMAIN_ID`** in both
+terminals: domain 0 has other processes on it, including a fake `/gps/fix` publisher.
+
+```sh
+# terminal 1: Lyrical sim + autonomy (delivery-autonomy's nix develop shell, see
+# deployment/README.md "Testing with the sim"); leave nav2 at false here
+export ROS_DOMAIN_ID=57
+ros2 launch my_bringup master_launch.py mode:=autonomy sim:=true
+
+# terminal 2: apt Jazzy, with a workspace that has hardware_bringup plus delivery-autonomy's
+# shared_types and autonomy built against Jazzy (autonomy installs the boundary map)
+export ROS_DOMAIN_ID=57
+source /opt/ros/jazzy/setup.bash && source <jazzy_ws>/install/setup.bash
+ros2 launch hardware_bringup nav2_local.launch.py sim:=true drive:=true
+```
+
+Then send a goal from terminal 2 as shown above. Two notes:
+
+- The Jazzy and Lyrical `ros2` CLI daemons clash on one domain (XML-RPC "unknown tag"). Run
+  `ros2 daemon stop` and use `--no-daemon`, or a small rclpy script.
+- Topics are known to work across the two distros. Actions (`/follow_path`,
+  `/compute_shortest_path`) are not tested across distros yet.
+
 ## Bench checks before the first drive (wheels off the ground)
 
 1. **Serial.** `ros2 launch hardware_bringup drive.launch.py`. The bridge logs `Arduino ready

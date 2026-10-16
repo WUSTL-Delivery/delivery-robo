@@ -21,6 +21,14 @@ from ament_index_python.packages import get_package_share_directory, PackageNotF
 # sim:=true (autonomy only, laptop testing) swaps the sensors and the drive chain for the Gazebo
 # sim in the delivery-autonomy submodule; the autonomy nodes are the same. Needs Gazebo, i.e.
 # delivery-autonomy's `nix develop` shell. Never on the robot.
+#
+# nav2:=true (autonomy only, opt-in until the Pi's CPU budget is measured) adds Nav2 local
+# planning: hardware_bringup nav2_local.launch.py = map_server (boundary map) + planner_server
+# (costmap from the map, EKF odom and scans; Smac Hybrid-A*) + lifecycle manager + local_planner,
+# which drives through the MPPI's /follow_path. Goals on /goal_pose or /nav/goal_node. Needs
+# the apt Nav2 packages (deployment/install_autonomy_deps.sh); without them it logs and skips,
+# e.g. in the Lyrical sim shell, where Nav2 runs from a separate Jazzy terminal instead
+# (hardware_bringup/README.md, "Nav2 local planning").
 
 # NTRIP caster settings for the ublox_dgnss ntrip client. The committed values are the
 # historical ones (they are in git history already). deployment/ntrip.local.yaml (gitignored,
@@ -86,6 +94,22 @@ def generate_launch_description():
       description='autonomy mode only: the delivery-autonomy Gazebo sim replaces the sensors and the '
                   'drive chain (laptop testing inside its nix develop shell; never on the robot)',
    )
+   nav2 = LaunchConfiguration('nav2')
+   nav2_arg = DeclareLaunchArgument(
+      'nav2',
+      default_value='false',
+      choices=['true', 'false'],
+      description='autonomy mode only: Nav2 local planning (boundary-map costmap + Hybrid-A* planner_server '
+                  '+ local_planner driving the MPPI via /follow_path); goals on /goal_pose or /nav/goal_node',
+   )
+   nav2_sources = LaunchConfiguration('nav2_sources')
+   nav2_sources_arg = DeclareLaunchArgument(
+      'nav2_sources',
+      default_value='auto',
+      choices=['auto', 'fused', 'separate', 'lidar'],
+      description='with nav2:=true: costmap scan inputs (nav2_local.launch.py sources:=); auto = lidar '
+                  '(/scan) with sim:=true, else fused (/scan_fused, needs my_bringup scan_fusion)',
+   )
    robot_id = LaunchConfiguration('robot_id')
    api_url = LaunchConfiguration('api_url')
    robot_id_arg = DeclareLaunchArgument(
@@ -113,6 +137,7 @@ def generate_launch_description():
    is_autonomy = IfCondition(PythonExpression(["'", mode, "' == 'autonomy'"]))
    is_autonomy_real = IfCondition(PythonExpression(["'", mode, "' == 'autonomy' and '", sim, "' != 'true'"]))
    is_autonomy_sim = IfCondition(PythonExpression(["'", mode, "' == 'autonomy' and '", sim, "' == 'true'"]))
+   is_nav2 = IfCondition(PythonExpression(["'", mode, "' == 'autonomy' and '", nav2, "' == 'true'"]))
    # the robot's own model and lidar, i.e. everything except autonomy + sim (Gazebo provides both)
    not_sim = IfCondition(PythonExpression(["not ('", mode, "' == 'autonomy' and '", sim, "' == 'true')"]))
 
@@ -238,6 +263,27 @@ def generate_launch_description():
       except PackageNotFoundError:
          print('[master_launch] autonomy package not found (submodule ros2_ws/src/delivery-autonomy not '
                'checked out or not built); autonomy mode is joystick-through-bridge only')
+
+   # --- Nav2 local planning (autonomy + nav2:=true) ------------------------------
+   # nav2_local.launch.py guards itself: missing Nav2 packages (the Lyrical sim shell has none),
+   # no boundary map, or no shared_types each log and skip instead of aborting this launch. The
+   # only guard needed here is for a stale hardware_bringup install without the file.
+   # drive:=true: local_planner sends its paths to /follow_path, the MPPI's /cmd_vel is already
+   # /cmd_vel_nav (autonomy_real.launch.py), so the joystick still overrides through twist_mux.
+   nav2_actions = []
+   _nav2_launch = os.path.join(hw_dir or '', 'launch', 'nav2_local.launch.py')
+   if hw_dir is not None and os.path.isfile(_nav2_launch):
+      nav2_actions.append(IncludeLaunchDescription(
+         PythonLaunchDescriptionSource(_nav2_launch),
+         launch_arguments={'sim': sim, 'sources': nav2_sources, 'drive': 'true'}.items(),
+         condition=is_nav2,
+      ))
+   else:
+      nav2_actions.append(LogInfo(
+         msg='[master_launch] WARNING: hardware_bringup nav2_local.launch.py not installed (rebuild '
+             'hardware_bringup); nav2:=true has no Nav2',
+         condition=is_nav2,
+      ))
 
    # --- sim (autonomy + sim:=true): Gazebo in place of the sensors and the drive chain ----
    # run_simulator.sh (Gazebo, robot spawn, ros_gz_bridge) is not installed by the simulation
@@ -412,6 +458,8 @@ def generate_launch_description():
    return LaunchDescription([
         mode_arg,
         sim_arg,
+        nav2_arg,
+        nav2_sources_arg,
         robot_id_arg,
         api_url_arg,
         lidar_arg,
@@ -422,6 +470,7 @@ def generate_launch_description():
         control_node, 
         *sensor_nodes,
         *autonomy_nodes,
+        *nav2_actions,
         *sim_nodes,
         *lidar_nodes,
         *realsense_nodes,
