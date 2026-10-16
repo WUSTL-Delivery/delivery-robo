@@ -5,13 +5,19 @@
   Ported from delivery-autonomy/src/simulation/urdf/robot.urdf.xacro with all
   <gazebo> tags/plugins removed, so sim and real share the same frame names:
 
-    base_footprint -> base_link -> lidar_link   (scan frame, fixed)
-                                -> imu_link     (imu_node stamps this, fixed)
-                                -> gps_link     (fixed)
-                                -> camera_link  (RealSense mount, fixed; the
-                                                 driver adds camera_link ->
-                                                 camera_*_optical_frame)
-                                -> *_wheel / *_steering_link (moving joints)
+    base_link -> base_footprint (ground under the chassis centre, fixed)
+              -> lidar_link     (scan frame, fixed)
+              -> imu_link       (imu_node stamps this, fixed)
+              -> gps_link       (fixed)
+              -> camera_link    (RealSense mount, fixed; the driver adds
+                                 camera_link -> camera_*_optical_frame)
+              -> *_wheel / *_steering_link (moving joints)
+
+  base_link is the ROOT link because the delivery-autonomy EKF publishes
+  odom -> base_link. A URDF base_footprint -> base_link would give base_link
+  two TF parents and orphan base_footprint (every lookup through it fails).
+  base_footprint hangs wheel_radius below base_link, so z = 0 in it is the
+  ground (depth_obstacles' ground_frame).
 
   Moving joints (wheels, steering) only get TF once something publishes
   /joint_states; the fixed sensor frames above are unaffected.
@@ -84,8 +90,6 @@
     </inertial>
   </xacro:macro>
 
-  <link name="base_footprint"/>
-
   <link name="base_link">
     <visual>
       <geometry>
@@ -101,10 +105,18 @@
     <xacro:box_inertia m="${chassis_mass}" w="${chassis_width}" h="${chassis_height}" d="${chassis_length}"/>
   </link>
 
+  <!-- base_footprint is a CHILD of base_link (see the header): the EKF owns
+       odom -> base_link, so base_link must be the URDF root.
+       Expected startup WARN from robot_state_publisher: "root link base_link
+       has an inertia ... KDL does not support". Harmless (KDL ignores the
+       root inertia; nothing simulates this model). Do NOT add a dummy root
+       link above base_link to silence it: that is the double-parent bug. -->
+  <link name="base_footprint"/>
+
   <joint name="base_joint" type="fixed">
-    <parent link="base_footprint"/>
-    <child link="base_link"/>
-    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="base_footprint"/>
+    <origin xyz="0 0 ${-wheel_radius}" rpy="0 0 0"/>
   </joint>
 
   <!-- ============================= Wheels ================================= -->

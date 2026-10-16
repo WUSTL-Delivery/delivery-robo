@@ -399,7 +399,7 @@ the C1 is plugged in; `lidar:=false` turns it off):
 
 - `/scan`: raw `sensor_msgs/LaserScan` from `sllidar_node`, ~10 Hz, frame `lidar_link`
 - `/scan_filtered`: the same scan with the robot body removed (laser_filters)
-- TF `base_footprint -> base_link -> lidar_link` from `robot_state_publisher`
+- TF `base_link -> lidar_link` (and `base_link -> base_footprint`) from `robot_state_publisher`
 
 To check that Nav2 really builds a costmap from it (robot-centred, no odometry
 needed), run next to the robot stack and view `/costmap` in RViz as a
