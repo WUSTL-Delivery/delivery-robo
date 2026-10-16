@@ -78,21 +78,35 @@ planner_server:
       # Docs range 1.3-3.5. 3.0 rather than the default 2.0: past a 0.6 m scan
       # obstacle in the 3 m corridor the path centres in the gap (footprint
       # 0.29 m from the obstacle) instead of brushing it (0.08 m at 2.0).
+      # TDM-42 (median plan footprint clearance past a centred box, recorded
+      # costmaps, smoothing on): 3.0 0.068 m, 4.0 0.058 m, 5.0 0.063 m, quadratic
+      # 0.083 m; without smoothing 3.0 0.122 m, 2.0 0.104 m, 4.0 0.110 m,
+      # quadratic 0.118 m. Higher values also pull harder back to the centreline.
       cost_penalty: 3.0
       use_quadratic_cost_penalty: false
-      non_straight_penalty: 1.2
-      change_penalty: 0.0
+      non_straight_penalty: 1.2           # 1.5: 0.069 m past the box (TDM-42, as above)
+      change_penalty: 0.0                 # 0.5: 0.051 m
       reverse_penalty: 2.0            # unused with DUBIN
       retrospective_penalty: 0.015
       lookup_table_size: 20.0         # m; Dubins heuristic table, > the ~12 m carrot
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0  # m
+      # Dubins shots only happen within 3 m of the carrot, ~12 m ahead, so they never
+      # reach an obstacle the robot is passing: 50 changed no plan past the box (TDM-42).
       analytic_expansion_max_cost: 200.0
       analytic_expansion_max_cost_override: false
       allow_primitive_interpolation: false
       debug_visualizations: false
-      smooth_path: true
-      smoother:
+      # No smoothing (TDM-42). The smoother is cost-blind: it straightens the swerve
+      # round an obstacle, and that pulls the path back towards the obstacle. On 64
+      # recorded costmaps of a box centred in the corridor (bench replay of the
+      # TDM-34/40 sim runs), the median plan kept its footprint 0.068 m from the box
+      # with smoothing and 0.122 m without, and ran 0.80 m off the centreline
+      # abreast of the box instead of 0.87 m (the middle of the gap is 0.91 m). The
+      # raw path is radius-1.0 arcs and straights, which the MPPI follows as well.
+      # Planning time is unchanged (2-8 ms).
+      smooth_path: false
+      smoother:                       # unused while smooth_path is false
         max_iterations: 1000
         w_smooth: 0.3
         w_data: 0.2
@@ -235,6 +249,10 @@ global_costmap:
       # A start 0.8 m off the centreline still plans and is back within 0.2 m after ~2 m.
       # Obstacle clearance is set by Smac's path smoother (cost-blind; it cuts towards the
       # obstacle: 0.31 m with smooth_path false) and cost_penalty, not by inflation.
+      # TDM-42 replayed recorded costmaps of a centred box: scaling 1.0 / 1.5 kept the plans
+      # closer to the box (median footprint clearance 0.022 / 0.057 m, against 0.068 m at
+      # 2.0), 3.0 / 4.0 a little further (0.084 m; without smoothing 0.117 / 0.124 m against
+      # 0.122 m). Not worth the weaker centring TDM-29 measured above 2.0.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
