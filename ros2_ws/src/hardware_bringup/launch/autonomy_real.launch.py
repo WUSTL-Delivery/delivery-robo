@@ -13,10 +13,14 @@ delivery-autonomy itself is never edited:
 Needs drive.launch.py (or the whole master_launch mode:=autonomy) for /odom and motion, and
 the IMU + GPS drivers for sensor data.
 
-sim:=true runs the same three autonomy nodes against the delivery-autonomy Gazebo sim
-(master_launch mode:=autonomy sim:=true): sim time, Gazebo's own /gps/fix, /imu/data and /odom,
-the controller straight on the sim's /cmd_vel (no twist_mux), and autonomy.launch.py's fixed
-map->odom at the spawn pose instead of gps_datum_tf.
+sim:=true runs the same nodes against the delivery-autonomy Gazebo sim
+(master_launch mode:=autonomy sim:=true): sim time, Gazebo's own /imu/data and /odom, the
+controller straight on the sim's /cmd_vel (no twist_mux), and gps_datum_tf in its local_enu
+mode. It gates Gazebo's /gps/fix onto /gps/fix_gated for state_estimation and publishes
+map->odom from the first fix it forwards, as the Gazebo world position of that fix (the sim's
+map frame is the world frame). The robot settles 0.37 m from its spawn request after the
+drop, so a fixed map->odom at the spawn pose (autonomy.launch.py) is off by however far it
+moved before the EKF's first fix. Taking both from the same fix removes that race.
 """
 import os
 
@@ -25,6 +29,11 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+# delivery-autonomy src/simulation/worlds/washu.world <spherical_coordinates> (heading 0):
+# latitude, longitude, elevation. gps_datum_tf inverts Gazebo's NavSat sensor with it.
+SIM_WORLD_ORIGIN = (38.64817527, -90.30128152, 0.0)
+SIM_GATED_GPS_TOPIC = '/gps/fix_gated'
 
 
 def _nodes(context):
@@ -38,29 +47,32 @@ def _nodes(context):
     real_time = {'use_sim_time': sim}
 
     if sim:
-        # autonomy.launch.py's calibration: the odom origin is the spawn pose in
-        # delivery-autonomy's run_simulator.sh. Keep the two in sync.
-        datum = Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='map_to_odom_broadcaster',
-            arguments=['--x', '-95.0', '--y', '25.5', '--z', '2', '--roll', '0', '--pitch', '0', '--yaw', '0',
-                       '--frame-id', 'map', '--child-frame-id', 'odom'],
-            parameters=[real_time],
-        )
+        # Not hardware.yaml (robot topics, UTM): gate the bridged /gps/fix and place odom at the
+        # Gazebo world position of the EKF's first fix.
+        ekf_gps = SIM_GATED_GPS_TOPIC
+        datum_params = [{
+            **real_time,
+            'gps_in_topic': gps_in or '/gps/fix',
+            'gps_out_topic': ekf_gps,
+            'projection': 'local_enu',
+            'enu_origin_lat': SIM_WORLD_ORIGIN[0],
+            'enu_origin_lon': SIM_WORLD_ORIGIN[1],
+            'enu_origin_alt': SIM_WORLD_ORIGIN[2],
+        }]
     else:
+        ekf_gps = '/gps/fix'          # hardware.yaml gps_datum_tf.gps_out_topic
         datum_params = [hardware_yaml]
         if gps_in:
             datum_params.append({'gps_in_topic': gps_in})
-        datum = Node(
-            package='hardware_bringup',
-            executable='gps_datum_tf',
-            name='gps_datum_tf',
-            output='screen',
-            respawn=True,
-            respawn_delay=3.0,
-            parameters=datum_params,
-        )
+    datum = Node(
+        package='hardware_bringup',
+        executable='gps_datum_tf',
+        name='gps_datum_tf',
+        output='screen',
+        respawn=True,
+        respawn_delay=3.0,
+        parameters=datum_params,
+    )
     state_estimation = Node(
         package='autonomy',
         executable='state_estimation',
@@ -72,7 +84,7 @@ def _nodes(context):
             **real_time,
             'imu_topic': '/imu/data',
             'odom_topic': '/odom',
-            'gps_topic': '/gps/fix',
+            'gps_topic': ekf_gps,
             'cmd_vel_topic': ekf_cmd_vel,
         }],
     )
@@ -106,7 +118,8 @@ def generate_launch_description():
             'hardware_params', default_value=os.path.join(share, 'config', 'hardware.yaml')),
         DeclareLaunchArgument(
             'gps_in_topic', default_value='',
-            description='NavSatFix topic published by the GPS driver; overrides hardware.yaml when set'),
+            description='NavSatFix topic published by the GPS driver; overrides hardware.yaml when set '
+                        "(empty with sim:=true = the Gazebo bridge's /gps/fix)"),
         DeclareLaunchArgument(
             'ekf_cmd_vel_topic', default_value='',
             description="state_estimation's prediction input; empty = /cmd_vel_executed (/cmd_vel with "
