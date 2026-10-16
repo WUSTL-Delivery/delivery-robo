@@ -25,6 +25,14 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
+  <!-- TDM-21: launch/nav2_local.launch.py (boundary map + costmap + planner_server).
+       apt: ros-jazzy-nav2-map-server, -nav2-planner, -nav2-costmap-2d, -nav2-lifecycle-manager. -->
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_costmap_2d</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
   <test_depend>python3-pytest</test_depend>
 
   <export>
