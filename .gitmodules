@@ -7,3 +7,6 @@
 [submodule "ros2_ws/src/ublox_dgnss"]
 	path = ros2_ws/src/ublox_dgnss
 	url = https://github.com/aussierobots/ublox_dgnss.git
+[submodule "sim/src/serial"]
+	path = sim/src/serial
+	url = https://github.com/RoverRobotics-forks/serial-ros2.git
