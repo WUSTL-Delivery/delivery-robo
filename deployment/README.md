@@ -88,10 +88,9 @@ source install/setup.bash && ros2 run hardware_bringup bench_mppi   # MPPI must 
 ros2 launch hardware_bringup autonomy_real.launch.py                # warm the OSM cache; Ctrl-C after "Path Planning Action Server is ready."
 ```
 
-The submodule is pinned to delivery-autonomy's `dev` branch (commit `551467a`). The Pi can
-fetch that commit only once `dev` is pushed to the submodule's remote. That push is human
-ticket TDM-35, and it has not happened yet. Until then the submodule update fails (non-fatally)
-and the Pi keeps its old checkout, which ignores the controller settings in `hardware.yaml`
+The submodule is pinned to delivery-autonomy's `dev` branch (commit `551467a`), which is on the
+submodule's remote (TDM-35). If the submodule update fails at boot (offline), the Pi keeps its
+old checkout; an old checkout ignores the controller settings in `hardware.yaml`
 (`hardware_bringup/README.md`, "delivery-autonomy version").
 
 `install_deps.sh` first pip-installs `requirements.lock` (every version and hash

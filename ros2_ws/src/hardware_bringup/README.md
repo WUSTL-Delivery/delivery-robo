@@ -65,12 +65,11 @@ sim fixes. `.gitmodules` says `branch = dev` for documentation only: `git submod
 out the pinned commit, not the branch head. Move the pin with `git submodule update --remote`
 or `git update-index --cacheinfo 160000,<sha>,ros2_ws/src/delivery-autonomy`.
 
-**The Pi cannot fetch the pinned commit yet.** `dev` exists only in local checkouts until
-someone pushes it to the submodule's remote (`sebtheiler/delivery-autonomy`). That push is
-human ticket TDM-35, and it has not happened. Until then, `startup.sh`'s submodule update fails
-on the Pi. That failure is not fatal: the Pi logs "submodule update failed" and keeps the
-delivery-autonomy it already has (upstream `2b8924b`, the previous pin). That old controller
-ignores every `controller_server` value in `hardware.yaml`. It drives at a fixed 1.5 m/s, does
+`dev` is pushed to the submodule's remote (`sebtheiler/delivery-autonomy`, TDM-35), so the Pi
+fetches the pin on its next online boot. If that submodule update fails (offline), the Pi logs
+"submodule update failed" and keeps the delivery-autonomy it already has. A Pi that has not
+booted online since the push still runs upstream `2b8924b`, the previous pin, whose controller
+ignores every `controller_server` value in `hardware.yaml`: it drives at a fixed 1.5 m/s, does
 not read the costmap, and can reverse. Before driving autonomously, check that
 `git -C ros2_ws/src/delivery-autonomy rev-parse --short HEAD` on the Pi prints `551467a`.
 
