@@ -39,9 +39,9 @@ ros2 launch hardware_bringup autonomy_real.launch.py [gps_in_topic:=/fix]       
 python3 ros2_ws/src/delivery-autonomy/src/autonomy/autonomy/behavior.py <node_id>
 ```
 
-First-time setup on the Pi: `deployment/install_autonomy_deps.sh` (Python deps, `joy`,
-`twist_mux`), then rebuild. `startup.sh` initialises the submodule and builds with
-`--packages-ignore simulation`.
+First-time setup on the Pi: `deployment/install_deps.sh` (pinned Python deps, then rosdep for
+`joy`, `twist_mux` and the rest of every `package.xml`), then rebuild. `startup.sh` initialises
+the submodule and builds with `--packages-ignore simulation`.
 
 All parameters live in `config/hardware.yaml`. The three geometry numbers under `/**` are shared
 by `arduino_bridge` and `joy_to_cmdvel` and must stay identical for both, which is why they are

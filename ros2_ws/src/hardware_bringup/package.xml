@@ -22,9 +22,13 @@
   <!-- Started by the launch files; installed from apt (ros-jazzy-joy, ros-jazzy-twist-mux). -->
   <exec_depend>joy</exec_depend>
   <exec_depend>twist_mux</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
 
   <export>

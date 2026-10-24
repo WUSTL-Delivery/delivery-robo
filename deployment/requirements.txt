@@ -1,5 +1,7 @@
-# Python dependencies of delivery-autonomy (ros2_ws/src/delivery-autonomy/src/autonomy) on the
-# Pi. On dev machines they come from the Nix flake; here install_autonomy_deps.sh pip-installs them.
+# Pip-only Python dependencies of ros2_ws on the Pi: delivery-autonomy's numeric stack and the
+# IMU driver. On dev machines autonomy's come from its Nix flake. install_deps.sh installs them
+# from requirements.lock; after editing this file, regenerate the lock with the command in its
+# header (uv pip compile ...) and commit both.
 #
 # Everything numeric comes from pip as ONE consistent set: current jax needs numpy>=2.1 and
 # scipy>=1.15, and Ubuntu 24.04's apt pandas/shapely/pyproj are compiled against numpy 1 and
