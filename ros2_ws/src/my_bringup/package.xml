@@ -10,11 +10,26 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>sllidar_ros2</exec_depend>
   <!-- lidar self-hit filter; sudo apt install ros-jazzy-laser-filters -->
   <exec_depend>laser_filters</exec_depend>
   <!-- Intel RealSense driver; sudo apt install ros-jazzy-realsense2-camera -->
   <exec_depend>realsense2_camera</exec_depend>
+  <!-- Started by master_launch.py (Nav2 comes in through hardware_bringup). The launch also uses
+       autonomy and simulation (delivery-autonomy submodule, not in rosdistro); those are optional,
+       guarded in the launch file, and deliberately not declared so rosdep works without them. -->
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>joy</exec_depend>
+  <exec_depend>ublox_dgnss</exec_depend>
+  <exec_depend>robot_description</exec_depend>
+  <exec_depend>joystick_control</exec_depend>
+  <exec_depend>imu_package</exec_depend>
+  <exec_depend>hardware_bringup</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

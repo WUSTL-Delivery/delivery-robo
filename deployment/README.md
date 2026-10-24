@@ -82,9 +82,10 @@ One-time setup on the Pi (as `delivery`):
 
 ```sh
 cd ~/delivery-robo && git pull && git submodule update --init      # startup.sh also does this
-deployment/install_autonomy_deps.sh                                 # jax, osmnx, geopandas, joy, twist_mux ...
+deployment/install_deps.sh                                          # pinned pip set, then rosdep
 cd ros2_ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install --packages-ignore simulation
 source install/setup.bash && ros2 run hardware_bringup bench_mppi   # MPPI must fit the 100 ms control tick
+ros2 launch hardware_bringup autonomy_real.launch.py                # warm the OSM cache; Ctrl-C after "Path Planning Action Server is ready."
 ```
 
 The submodule is pinned to delivery-autonomy's `dev` branch (commit `551467a`). The Pi can
@@ -93,11 +94,20 @@ ticket TDM-35, and it has not happened yet. Until then the submodule update fail
 and the Pi keeps its old checkout, which ignores the controller settings in `hardware.yaml`
 (`hardware_bringup/README.md`, "delivery-autonomy version").
 
-`install_autonomy_deps.sh` pip-installs into `~/.local` with `--break-system-packages`
-(PEP 668). Current `jax` needs numpy 2, so the whole numeric stack (numpy, scipy, pandas,
-shapely, pyproj, geopandas, osmnx) comes from pip as one consistent set; the apt copies stay
-installed for ROS but are shadowed for this user. Apt-built extensions such as
-`python3-opencv` stop importing under numpy 2; nothing in `ros2_ws` uses them.
+`install_deps.sh` first pip-installs `requirements.lock` (every version and hash
+pinned) into `~/.local` with `--break-system-packages` (PEP 668), then runs `rosdep install`
+over `ros2_ws/src`, so every dependency declared in a `package.xml` is installed. Keys missing
+from the public rosdep index (pip-only drivers) are defined in `deployment/rosdep.yaml`. Run it
+after the submodule update: `hardware_bringup` depends on `shared_types` from delivery-autonomy,
+which rosdep only finds in the checkout. Current
+`jax` needs numpy 2, so the whole numeric stack (numpy, scipy, pandas, shapely, pyproj,
+geopandas, osmnx) comes from pip as one consistent set; the apt copies stay installed for ROS
+but are shadowed for this user. Apt-built extensions such as `python3-opencv` stop importing
+under numpy 2; nothing in `ros2_ws` uses them.
+
+Adding a dependency: declare it in the package's `package.xml`. If it is pip-only, also add it
+to `requirements.txt`, regenerate the lock (command in its header), and add a key to
+`rosdep.yaml`.
 
 The planner downloads the OSM footway graph from Overpass on every start and caches it in
 `~/.cache/delivery_autonomy/cache` (the launch sets that as its working directory). Start it
@@ -295,16 +305,14 @@ doesn't start twice.
 
 Things the Pi needs that no script installs yet — verify when reimaging:
 
-- pip: `adafruit-circuitpython-bno08x` (+ Blinka `board`/`busio`) for the IMU;
-  `pyserial` for the serial nodes. `deployment/install_autonomy_deps.sh` covers the
-  autonomy-mode Python packages (`deployment/autonomy-requirements.txt`).
-- apt/ROS: `ublox_dgnss` (+ ntrip client), `twist_mux`, `joy`, `ros2_control` stack
+- packages: `deployment/install_deps.sh` installs everything `ros2_ws` declares. The
+  `ros2_control` stack used by `sim/`'s `launch_real_robot.launch.py` is not covered.
 - serial ports: the Arduino and the u-blox can swap `ttyUSB` numbers across reboots. Point
   `arduino_bridge`'s `port` (hardware_bringup `config/hardware.yaml`) at the stable
   `/dev/serial/by-id/usb-...` symlink (`ls -l /dev/serial/by-id/`)
 - user groups: `dialout` (serial), `i2c`
-- the `serial` package must be built with
-  `colcon build --packages-select serial --cmake-args -DCMAKE_POSITION_INDEPENDENT_CODE=ON`
+- the `serial` package needs `-DCMAKE_POSITION_INDEPENDENT_CODE=ON`; `sim/colcon.meta` passes
+  it whenever `colcon build` runs from `sim/`
 - `rplidar_sdk` is checked out at `~/rplidar_sdk` (lidar not yet wired into
   any launch)
 - stray copies exist in the home dir (`~/relivery-robo-old`, a loose

@@ -1,0 +1,10 @@
+# rosdep keys for dependencies the public rosdistro index doesn't have. Registered as a rosdep
+# source by install_deps.sh, so `rosdep install --from-paths ros2_ws/src` resolves every
+# key our package.xml files use.
+#
+# Pip keys here only name the package; versions come from requirements.lock, which the
+# install script applies first. rosdep then sees them installed and does not pip-install again.
+python3-adafruit-circuitpython-bno08x-pip:
+  ubuntu:
+    pip:
+      packages: [adafruit-circuitpython-bno08x]

@@ -26,7 +26,7 @@ from ament_index_python.packages import get_package_share_directory, PackageNotF
 # planning: hardware_bringup nav2_local.launch.py = map_server (boundary map) + planner_server
 # (costmap from the map, EKF odom and scans; Smac Hybrid-A*) + lifecycle manager + local_planner,
 # which drives through the MPPI's /follow_path. Goals on /goal_pose or /nav/goal_node. Needs
-# the apt Nav2 packages (deployment/install_autonomy_deps.sh); without them it logs and skips,
+# the apt Nav2 packages (deployment/install_deps.sh); without them it logs and skips,
 # e.g. in the Lyrical sim shell, where Nav2 runs from a separate Jazzy terminal instead
 # (hardware_bringup/README.md, "Nav2 local planning"). nav2 also sets the MPPI controller's
 # use_costmap, so pass nav2:=true there as well when the Jazzy terminal runs Nav2.
