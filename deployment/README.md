@@ -89,9 +89,7 @@ ros2 launch hardware_bringup autonomy_real.launch.py                # warm the O
 ```
 
 The submodule is pinned to delivery-autonomy's `dev` branch (commit `551467a`), which is on the
-submodule's remote (TDM-35). If the submodule update fails at boot (offline), the Pi keeps its
-old checkout; an old checkout ignores the controller settings in `hardware.yaml`
-(`hardware_bringup/README.md`, "delivery-autonomy version").
+submodule's remote (TDM-35); see `hardware_bringup/README.md`, "delivery-autonomy version".
 
 `install_deps.sh` first pip-installs `requirements.lock` (every version and hash
 pinned) into `~/.local` with `--break-system-packages` (PEP 668), then runs `rosdep install`
