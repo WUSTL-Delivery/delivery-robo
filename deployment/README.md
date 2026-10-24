@@ -162,7 +162,17 @@ mountpoint: RTX_RTCM34
 username: <user>
 password: <password>
 use_https: false
+send_gga: true      # RTX_RTCM34 is a network RTK (VRS) stream: no GGA, no corrections
+fix_topic: /fix
 ```
+
+`RTX_RTCM34` is a MoDOT network RTK (VRS) mountpoint. The caster accepts the login but sends
+no RTCM until the rover reports its position in a GGA sentence, so `send_gga` must stay on
+(the ntrip client takes the position from `/fix`). To check corrections are flowing:
+`ros2 topic echo /ubx_rxm_rtcm --once` (messages arrive, `msg_used: 2`) and
+`ros2 topic echo /ubx_nav_status --once` shows `diff_soln: true`; `/fix` then reports
+`status.status: 1`. The ntrip client logs `sending GGA to caster: $GPGGA,...` followed by
+`receiving RTCM from mountpoint 'RTX_RTCM34'`.
 
 Any key left out keeps the committed default.
 

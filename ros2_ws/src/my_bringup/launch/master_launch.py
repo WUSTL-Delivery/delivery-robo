@@ -35,6 +35,11 @@ from ament_index_python.packages import get_package_share_directory, PackageNotF
 # historical ones (they are in git history already). deployment/ntrip.local.yaml (gitignored,
 # top-level "key: value" lines) overrides them key by key, so the credentials can be rotated
 # on the robot without a commit. See deployment/README.md.
+#
+# RTX_RTCM34 is a MoDOT network RTK (VRS) mountpoint: the caster accepts the login but streams
+# no RTCM until the rover reports its position in a GGA sentence (sourcetable nmea flag = 1).
+# send_gga makes the client take the position from /fix and send it on every (re)connect;
+# without it the receiver never leaves a plain 3D fix (diff_soln false, no RXM-RTCM).
 NTRIP_DEFAULTS = {
     'use_https': 'false',
     'host': '168.166.125.30',
@@ -42,7 +47,10 @@ NTRIP_DEFAULTS = {
     'mountpoint': 'RTX_RTCM34',
     'username': '/WashUroboticsDelivery2026',
     'password': '$DeliveryWU197?',
+    'send_gga': 'true',
+    'fix_topic': '/fix',
 }
+NTRIP_BOOL_KEYS = ('use_https', 'send_gga')
 
 
 def _repo_root():
@@ -68,7 +76,7 @@ def _ntrip_settings():
                 override = yaml.safe_load(f) or {}
             for key in settings:
                 if key in override and override[key] is not None:
-                    settings[key] = str(override[key]).lower() if key == 'use_https' else str(override[key])
+                    settings[key] = str(override[key]).lower() if key in NTRIP_BOOL_KEYS else str(override[key])
             print(f'[master_launch] NTRIP settings from {path}')
         except Exception as exc:  # noqa: BLE001 - a bad override must not brick the boot
             print(f'[master_launch] WARNING: could not read {path} ({exc}); using committed NTRIP defaults')
