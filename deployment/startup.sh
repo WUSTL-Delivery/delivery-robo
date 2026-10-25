@@ -133,12 +133,11 @@ else
   log "WARNING: fetch failed (exit=$fetch_status); see Git's error above — starting with the existing build; no fetch retry this run"
 fi
 
-# --- 1b. Sync submodules (delivery-autonomy, sllidar_ros2) -------------------
+# --- 1b. Sync submodules -----------------------------------------------------
 # Runs every boot, not only after a pull: a Pi that pulled before a submodule
 # existed still has an empty directory. Bounded + non-fatal, like the fetch
-# above. Only the paths registered in .gitmodules: the repo also carries
-# gitlinks with no .gitmodules entry (librealsense, ublox_dgnss, sim/src/serial),
-# and a bare `git submodule update` aborts on the first of those with
+# above. Only the paths registered in .gitmodules: a gitlink without an entry
+# makes a bare `git submodule update` abort with
 # "fatal: No url found for submodule path ..." before fetching anything.
 # Offline with an empty delivery-autonomy -> autonomy mode has no autonomy nodes
 # (master_launch warns and skips them); teleop is unaffected.
