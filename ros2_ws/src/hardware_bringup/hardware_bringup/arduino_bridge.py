@@ -1,7 +1,7 @@
 """Sole owner of the Arduino serial port: ``/cmd_vel_out`` in, ``/odom`` out.
 
-Why one node owns the port: ``joystick_node``, ``wheel_encoder_node`` and the ``sim/``
-``ackdrive_arduino`` HAL all default to ``/dev/ttyUSB0`` and cannot coexist. In the
+Why one node owns the port: ``joystick_node`` and ``wheel_encoder_node`` both default to
+``/dev/ttyUSB0`` and cannot coexist. In the
 ``autonomy`` mode this node is the only process that opens it.
 
 Data flow::

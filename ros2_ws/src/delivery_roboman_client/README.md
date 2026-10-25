@@ -7,26 +7,23 @@ delivery completion. Navigation to the pickup location is still a TODO.
 
 The implementation is in
 [`delivery_roboman_client/robot_client.py`](delivery_roboman_client/robot_client.py).
-This package lives in the `sim` workspace and must be started manually; none
-of the repository's launch files starts it. The
+This package is built with the rest of `ros2_ws` but must be started manually;
+none of the repository's launch files starts it. The
 [robo-web status heartbeat](../../../deployment/README.md#status-heartbeat-robo-web)
-is a separate HTTP integration in `ros2_ws` with its own configuration.
+is a separate HTTP integration with its own configuration.
 
 ## Build and run
 
-Use a ROS 2 environment with `colcon`, `rclpy`, `std_msgs`, and `geometry_msgs`.
-The client also needs the Python package `websocket-client` (imported as
-`websocket`), which is listed in [`setup.py`](setup.py). Install it in the Python
-environment used by ROS before starting the node; the import check below
-should succeed.
+The client needs the Python package `websocket-client` (imported as `websocket`,
+rosdep key `python3-websocket`), which `deployment/install_deps.sh` installs with
+the rest of the workspace's dependencies.
 
 From the repository root, using the ROS 2 Jazzy installation described in the
 [deployment guide](../../../deployment/README.md):
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-python3 -c 'import rclpy, websocket; from std_msgs.msg import String; from geometry_msgs.msg import PoseStamped'
-cd sim
+cd ros2_ws
 colcon build --packages-select delivery_roboman_client --symlink-install
 source install/setup.bash
 ros2 run delivery_roboman_client robot_client --ros-args \
@@ -141,7 +138,7 @@ default namespace. Publishers and the subscription use queue depth 10.
 | `robot/delivery_complete` | Subscribes | Parses a JSON object, logs its `order_id`, then attempts a `ready` update. |
 | `robot/status` | Publisher created | No messages during normal operation: the timer that would publish them is commented out. |
 
-For a manual check with a test server, source ROS and `sim/install/setup.bash`
+For a manual check with a test server, source ROS and `ros2_ws/install/setup.bash`
 in each additional terminal. Start an order observer before sending the
 assignment example from the server:
 
@@ -172,8 +169,8 @@ reconnect after an intentional close while the process is still alive.
 
 | Symptom | Check |
 | --- | --- |
-| `No module named 'websocket'` | Make `websocket-client` available to the Python interpreter running the ROS executable. |
-| `ros2 run` cannot find the package or executable | Build this package in `sim`, source `sim/install/setup.bash`, and use executable name `robot_client`. |
+| `No module named 'websocket'` | Run `deployment/install_deps.sh`. |
+| `ros2 run` cannot find the package or executable | Build this package in `ros2_ws`, source `ros2_ws/install/setup.bash`, and use executable name `robot_client`. |
 | Connected but no order is published | Check both sets of assignment field names and that lowercase `robot_id` matches the parameter. |
 | `/robot/status` exists but `ros2 topic echo` receives nothing | The status timer is disabled in the current source. |
 | Server never sees the initial `ready` state | Connection sends `online`; automatic promotion to `ready` is commented out. Currently only a completion callback sends `ready`. |

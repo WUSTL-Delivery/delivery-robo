@@ -59,10 +59,6 @@ The same switch works by hand:
 - `robot_id` / `api_url` — identity and endpoint for the status heartbeat
   (see below). Fill in `api_url` with the Vercel URL of `../robo-web`.
 
-Note: the ros2_control drive stack (`launch_real_robot.launch.py` in `sim/`)
-is still launched manually and must not run together with `mode: autonomy`: both open the
-Arduino's serial port.
-
 ## Autonomy mode
 
 `mode: autonomy` runs `../plans/autonomy-hardware-integration.md`. What runs, in
@@ -302,14 +298,10 @@ doesn't start twice.
 
 Things the Pi needs that no script installs yet — verify when reimaging:
 
-- packages: `deployment/install_deps.sh` installs everything `ros2_ws` declares. The
-  `ros2_control` stack used by `sim/`'s `launch_real_robot.launch.py` is not covered.
 - serial ports: the Arduino and the u-blox can swap `ttyUSB` numbers across reboots. Point
   `arduino_bridge`'s `port` (hardware_bringup `config/hardware.yaml`) at the stable
   `/dev/serial/by-id/usb-...` symlink (`ls -l /dev/serial/by-id/`)
 - user groups: `dialout` (serial), `i2c`
-- the `serial` package needs `-DCMAKE_POSITION_INDEPENDENT_CODE=ON`; `sim/colcon.meta` passes
-  it whenever `colcon build` runs from `sim/`
 - `rplidar_sdk` is checked out at `~/rplidar_sdk` (lidar not yet wired into
   any launch)
 - stray copies exist in the home dir (`~/relivery-robo-old`, a loose
