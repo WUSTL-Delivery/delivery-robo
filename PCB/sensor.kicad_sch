@@ -3219,7 +3219,7 @@
 		)
 		(uuid "0032d3a2-981a-4854-8730-7652b7514ec0")
 	)
-	(label "ESP_TX_PI_RX"
+	(label "ESP_RX_PI_TX"
 		(at 245.11 95.25 0)
 		(effects
 			(font
@@ -3289,7 +3289,7 @@
 		)
 		(uuid "3e49c940-314c-4719-86f3-6823284ef27f")
 	)
-	(label "ESP_RX_PI_TX"
+	(label "ESP_TX_PI_RX"
 		(at 133.35 49.53 180)
 		(effects
 			(font
@@ -3299,7 +3299,7 @@
 		)
 		(uuid "5e0f0f3d-c46a-4883-9830-61530f5d16a8")
 	)
-	(label "ESP_RX_PI_TX"
+	(label "ESP_TX_PI_RX"
 		(at 245.11 97.79 0)
 		(effects
 			(font
@@ -3309,7 +3309,7 @@
 		)
 		(uuid "8258ad16-4ddc-4205-b8ac-71ac93bbc689")
 	)
-	(label "ESP_TX_PI_RX"
+	(label "ESP_RX_PI_TX"
 		(at 133.35 52.07 180)
 		(effects
 			(font
