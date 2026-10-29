@@ -50,7 +50,6 @@ the follower would drive. Three things keep that from reaching the follower:
   still in flight) and lets the follower finish that path, which was planned from further out.
   It replans again only if the robot ends up 0.5 m further out than that. The price: in that
   last stretch a new obstacle no longer makes planning fail, so it no longer stops the robot.
-  ``goal_tolerance`` now only decides when the goal counts as reached (logged, then forgotten).
 * Loops: a plan more than ``loop_margin`` longer than it needs to be (than the straight line to
   its end, or the route's own arc to the carrot when that is longer) is a planning failure,
   reason "loop", when the carrot's heading is within 90 deg of the robot's. A goal behind the
@@ -58,6 +57,24 @@ the follower would drive. Three things keep that from reaching the follower:
 * Duplicates: consecutive poses less than 1 cm apart (Smac can repeat its last pose) are merged
   before a path is published or forwarded; the follower derives headings from segment
   directions, and a zero-length segment has none.
+
+Stopping (TDM-44). The node sends the stop (an empty path) itself and forgets the goal; it does
+not leave the end to the follower. The follower ends a path only within 0.25 m *and* 8.6 deg of
+its end in the same tick, and after a miss its MPPI (no along-track cost, never below 0.15 m/s)
+drives on along the final heading: that is how the robot overshot in the Oct 24 Pi test.
+
+* Goal reached: the robot is within ``goal_tolerance`` of the route's end and the carrot is at
+  it. Logged as "goal reached". So the robot now stops about ``goal_tolerance`` from the goal
+  (less its braking distance), where the follower alone would have gone on to 0.25 m.
+* Goal line crossed: the robot passed beside the goal further out than that and has crossed the
+  goal line (through the route's end, perpendicular to the final heading) at most
+  ``goal_line_distance`` to either side of the end. Logged as a warning with the miss distance.
+  Checked only in the route's last ``goal_line_distance`` metres, so a route that passes beside
+  its own end earlier does not trigger it. ``goal_line_distance <= 0`` turns it off.
+
+Both count only while the robot heads within 90 deg of the final heading, so a forward U-turn
+to a direct goal that faces back at the robot does not stop it as it passes the goal on the way
+out.
 
 Runs on a single-threaded executor: every action call is asynchronous (done-callbacks), nothing
 blocks a callback, and TF is read with the latest-available lookup.
@@ -81,7 +98,10 @@ from tf2_ros import Buffer, TransformException, TransformListener
 from hardware_bringup.route import (
     Route,
     angle_difference,
+    crossed_goal_line,
     drop_duplicate_points,
+    goal_line_offset,
+    heads_with,
     in_final_approach,
     is_loop,
     loop_excess,
@@ -112,6 +132,7 @@ class LocalPlanner(Node):
         self._lookahead = float(p('lookahead', 12.0))
         self._offsets = [float(o) for o in p('carrot_offsets', [0.0, 2.0, -2.0, 4.0, -4.0])] or [0.0]
         self._goal_tolerance = float(p('goal_tolerance', 0.5))
+        self._goal_line_distance = float(p('goal_line_distance', 2.0))   # TDM-44; <= 0: off
         self._approach_distance = float(p('final_approach_distance', 2.0))
         self._loop_margin = float(p('loop_margin', 5.0))
         self._spacing = float(p('route_spacing', 0.5))
@@ -154,6 +175,8 @@ class LocalPlanner(Node):
             f'-> {planner_action} ({self._planner_id}) at {rate_hz} Hz -> {plan_topic} (frame {self._map_frame})'
             + (f' -> {follow_action}' if self._drive else ' [drive:=false, plan only]')
             + f'; final approach {self._approach_distance} m, loop_margin {self._loop_margin} m'
+            + f'; stops within {self._goal_tolerance} m of the goal or past its goal line '
+            f'(+-{self._goal_line_distance} m)'
         )
 
     def _declare(self, name, default):
@@ -311,11 +334,27 @@ class LocalPlanner(Node):
         self._progress = route.advance(rx, ry, self._progress, self._window)
         remaining = route.length - self._progress
         to_goal = math.hypot(route.end[0] - rx, route.end[1] - ry)
-        if to_goal <= self._goal_tolerance and remaining <= self._lookahead:
+        end, end_yaw = route.end, route.end_yaw
+        if (to_goal <= self._goal_tolerance and remaining <= self._lookahead
+                and heads_with(ryaw, end_yaw)):
             self.get_logger().info(
-                f'goal reached: {to_goal:.2f} m from ({route.end[0]:.2f}, {route.end[1]:.2f}) '
-                f'(tolerance {self._goal_tolerance} m); goal cleared, the follower finishes the last path')
+                f'goal reached: {to_goal:.2f} m from ({end[0]:.2f}, {end[1]:.2f}) '
+                f'(tolerance {self._goal_tolerance} m); goal cleared, stopping')
             self._new_goal()
+            self._send_stop('goal reached')
+            return
+        # Passed beside the goal, further out than goal_tolerance: the follower would drive on
+        width = self._goal_line_distance
+        if (width > 0.0 and remaining <= width
+                and crossed_goal_line(rx, ry, ryaw, end, end_yaw, width)):
+            along, across = goal_line_offset(rx, ry, end, end_yaw)
+            side = 'left' if across > 0.0 else 'right'
+            self.get_logger().warning(
+                f'missed the goal by {abs(across):.2f} m to the {side}: {along:.2f} m past the '
+                f'goal line through ({end[0]:.2f}, {end[1]:.2f}), {to_goal:.2f} m from the goal '
+                f'(tolerance {self._goal_tolerance} m); goal cleared, stopping')
+            self._new_goal()
+            self._send_stop('goal line crossed')
             return
 
         approach = in_final_approach(to_goal, self._approach_distance, self._ends_at_goal, self._final_approach)

@@ -30,6 +30,10 @@ circles back to it. Hence:
   condition lets it through.
 * ``drop_duplicate_points``: Smac can repeat its last pose. A zero-length segment has no
   direction, and the follower derives its reference headings from segment directions.
+
+Stopping at the goal (TDM-44): the local planner sends the stop itself, within the goal
+tolerance or, via ``crossed_goal_line``, once the robot has passed beside the goal and crossed
+the line through the route's end perpendicular to the final heading.
 """
 import math
 
@@ -142,6 +146,17 @@ class Route:
         """True if arc length ``s`` (a carrot) is the end of the route, i.e. the final goal."""
         return s >= self.length - 1e-6
 
+    @property
+    def end_yaw(self):
+        """Heading at the end of the route (the final carrot's), or None.
+
+        That is ``final_yaw`` if given, else the last segment's direction. A one-point route
+        without ``final_yaw`` has no direction.
+        """
+        if len(self.points) == 1 and self.final_yaw is None:
+            return None
+        return self.pose_at(self.length)[2]
+
     def pose_at(self, s):
         """``(x, y, yaw)`` at arc length ``s`` (clamped to the route); yaw is the route tangent."""
         if len(self.points) == 1:
@@ -242,6 +257,39 @@ def in_final_approach(to_goal, distance, path_ends_at_goal, active=False,
     if not path_ends_at_goal:
         return False
     return to_goal <= distance + (hysteresis if active else 0.0)
+
+
+def heads_with(yaw, end_yaw):
+    """Return True if ``yaw`` is within 90 deg of the final heading ``end_yaw`` (or it is None)."""
+    return end_yaw is None or abs(angle_difference(yaw, end_yaw)) <= math.pi / 2.0
+
+
+def goal_line_offset(x, y, end, end_yaw):
+    """Return ``(along, across)``: the point ``(x, y)`` in the frame of the route's end.
+
+    ``along`` runs along the final heading ``end_yaw``; it is >= 0 on or past the goal line,
+    the line through ``end`` perpendicular to that heading. ``across`` is > 0 to the left.
+    """
+    c, s = math.cos(end_yaw), math.sin(end_yaw)
+    dx, dy = x - end[0], y - end[1]
+    return dx * c + dy * s, dy * c - dx * s
+
+
+def crossed_goal_line(x, y, yaw, end, end_yaw, half_width):
+    """Return True once the robot has crossed the goal line beside the route's end.
+
+    That is: the robot at ``(x, y)`` heading ``yaw`` is on or past the goal line, at most
+    ``half_width`` to either side of ``end``, and drives the final heading's way
+    (``heads_with``). It passed beside the goal further out than the goal tolerance, and the
+    follower's MPPI (no along-track cost, never below 0.15 m/s) would drive on along the final
+    heading. The heading condition keeps a forward U-turn to a goal that faces back at the
+    robot from counting as a crossing on its way out. No final heading (``end_yaw`` None, a
+    one-point route) means no line.
+    """
+    if end_yaw is None or not heads_with(yaw, end_yaw):
+        return False
+    along, across = goal_line_offset(x, y, end, end_yaw)
+    return along >= -1e-9 and abs(across) <= half_width   # -1e-9: abeam despite rounding
 
 
 # ----------------------------------------------------------------------------------------------
