@@ -1,5 +1,6 @@
 """Local-planner geometry tests: resampling, monotonic progress, carrot, odom -> map transform,
-and (TDM-28) finishing near the goal: final approach, loop rejection, duplicate poses."""
+(TDM-28) finishing near the goal: final approach, loop rejection, duplicate poses, and (TDM-44)
+stopping at the goal line."""
 import math
 
 import pytest
@@ -7,8 +8,11 @@ import pytest
 from hardware_bringup.route import (
     Route,
     angle_difference,
+    crossed_goal_line,
     cumulative_lengths,
     drop_duplicate_points,
+    goal_line_offset,
+    heads_with,
     in_final_approach,
     is_loop,
     loop_excess,
@@ -323,3 +327,77 @@ def test_tdm28_carrot_reaches_the_goal_once_inside_the_lookahead():
     # a recovery offset can pull the carrot short of the goal: that path does not finish the job
     assert not route.reaches_end(route.carrot_s(16.0, 12.0, offset=-4.0))
     assert Route([(1.0, 1.0)]).reaches_end(0.0)
+
+
+# ----------------------------------------------------------------------------------------------
+# TDM-44: the goal line, through the route's end perpendicular to the final heading. The route
+# runs north (+y) and ends at (10, 20); the goal line is y = 20, |x - 10| <= 2.
+
+TDM44_END = (10.0, 20.0)
+TDM44_NORTH = math.pi / 2.0
+TDM44_ROUTE = Route([(10.0, 0.0), TDM44_END])
+
+
+def _tdm44_crossed(x, y, yaw=TDM44_NORTH, half_width=2.0):
+    return crossed_goal_line(x, y, yaw, TDM44_END, TDM44_NORTH, half_width)
+
+
+def test_tdm44_route_end_yaw():
+    assert TDM44_ROUTE.end_yaw == pytest.approx(TDM44_NORTH)
+    # a direct goal's own heading wins over the route's direction
+    assert Route([(0.0, 0.0), (5.0, 0.0)], final_yaw=1.0).end_yaw == pytest.approx(1.0)
+    # a one-point route has no direction, so no goal line
+    assert Route([(1.0, 1.0)]).end_yaw is None
+    assert Route([(1.0, 1.0)], final_yaw=0.5).end_yaw == pytest.approx(0.5)
+
+
+def test_tdm44_goal_line_offset():
+    along, across = goal_line_offset(9.3, 20.4, TDM44_END, TDM44_NORTH)
+    assert along == pytest.approx(0.4)    # past the line
+    assert across == pytest.approx(0.7)   # west = left of a robot heading north
+    along, across = goal_line_offset(10.0, 17.0, TDM44_END, TDM44_NORTH)
+    assert (along, across) == (pytest.approx(-3.0), pytest.approx(0.0))
+
+
+def test_tdm44_ahead_of_the_goal_is_not_crossed():
+    assert not _tdm44_crossed(10.0, 19.0)     # on the centreline, 1 m to go
+    assert not _tdm44_crossed(10.0, 19.99)
+    assert not _tdm44_crossed(10.7, 19.8)     # 0.7 m beside, not there yet
+
+
+def test_tdm44_exactly_abeam_counts_as_crossed():
+    assert _tdm44_crossed(10.0, 20.0)         # on the goal itself
+    assert _tdm44_crossed(9.3, 20.0)          # 0.7 m beside: outside a 0.5 m goal_tolerance
+    assert _tdm44_crossed(12.0, 20.0)         # the line's very end
+
+
+def test_tdm44_behind_the_goal_is_crossed():
+    assert _tdm44_crossed(10.0, 20.3)
+    assert _tdm44_crossed(10.27, 21.0)        # the Pi replay's miss: 0.27 m beside, then on
+    assert _tdm44_crossed(8.5, 22.0)
+    assert _tdm44_crossed(10.0, 28.0)         # however far it got before anyone looked
+
+
+def test_tdm44_far_off_to_the_side_does_not_stop():
+    assert not _tdm44_crossed(12.5, 20.0)
+    assert not _tdm44_crossed(7.0, 21.0)
+    assert not _tdm44_crossed(13.0, 25.0)
+    assert _tdm44_crossed(12.5, 20.0, half_width=3.0)   # the width is the parameter
+
+
+def test_tdm44_heading_must_agree_with_the_final_heading():
+    # past the line but driving back towards it (a forward U-turn to a goal facing the robot)
+    assert not _tdm44_crossed(10.0, 21.0, yaw=-TDM44_NORTH)
+    assert not _tdm44_crossed(10.0, 21.0, yaw=math.radians(91.0) + TDM44_NORTH)
+    # the Pi's 12 deg yaw bias, or a robot swerving beside the goal, still counts
+    assert _tdm44_crossed(10.0, 21.0, yaw=TDM44_NORTH + math.radians(12.0))
+    assert _tdm44_crossed(10.0, 21.0, yaw=TDM44_NORTH - math.radians(89.0))
+    assert heads_with(3.0, None)
+    assert not crossed_goal_line(10.0, 21.0, TDM44_NORTH, TDM44_END, None, 2.0)
+
+
+def test_tdm44_goal_line_wraps_around_pi():
+    # final heading west (pi), robot heading -179 deg: the same way
+    end, west = (0.0, 0.0), math.pi
+    assert crossed_goal_line(-0.5, 0.6, math.radians(-179.0), end, west, 2.0)
+    assert not crossed_goal_line(0.5, 0.6, math.radians(-179.0), end, west, 2.0)
