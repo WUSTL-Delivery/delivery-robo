@@ -33,8 +33,10 @@ reach its costmap sub-node (/global_costmap/global_costmap). Every launch on tha
 the same file, so nothing piles up; it is kept after shutdown (it is what the nodes started with).
 
 Degrades instead of aborting a parent launch: no map found or the patched params file cannot be
-written -> logs and starts nothing; Nav2 packages missing -> logs the apt command; nav2_planner
-missing -> runs the standalone
+written -> logs and starts nothing; Nav2 packages missing -> logs the apt command; an interface
+typesupport library Nav2 uses cannot bind its symbols (a ROS install mixed from two apt syncs,
+TDM-46: planner_server would die on its first costmap) -> logs the upgrade command and starts
+nothing; nav2_planner missing -> runs the standalone
 nav2_costmap_2d node under the same name (/global_costmap/global_costmap, same parameters, same
 topic), so the costmap can still be checked before the planner is installed (local_planner
 then only waits for the planner action server); nav2_msgs / shared_types missing or a stale
@@ -42,6 +44,8 @@ build without the local_planner executable -> logs and skips local_planner only.
 """
 import contextlib
 import copy
+import ctypes
+import glob
 import os
 import tempfile
 
@@ -60,6 +64,13 @@ SOURCE_MODES = {
 }
 STANDALONE_COSTMAP = 'global_costmap/global_costmap'
 MANAGER = 'lifecycle_manager_nav2_local'
+# Interface packages whose generated code the Nav2 nodes run: the costmap publishes
+# nav2_msgs/Costmap (and map_msgs updates), planner_server and local_planner exchange nav2_msgs
+# actions, the lifecycle manager bonds.
+TYPESUPPORT_PACKAGES = ('nav2_msgs', 'map_msgs', 'bond')
+# Every ros-jazzy package from one sync. `apt install` of one new package does not upgrade the
+# ROS core under it (TDM-46: nav2_msgs 1.3.13 built against fastcdr 2.2.8 over fastcdr 2.2.5).
+APT_SYNC = 'sudo apt update && sudo apt upgrade'
 
 
 def _have(pkg):
@@ -68,6 +79,29 @@ def _have(pkg):
         return True
     except PackageNotFoundError:
         return False
+
+
+def broken_typesupport(packages=TYPESUPPORT_PACKAGES):
+    """[(library, error)] for every typesupport library of `packages` that cannot bind its symbols.
+
+    TDM-46: on a ROS install mixed from two apt syncs these libraries load, because ld.so binds
+    functions lazily, and the process dies (exit 127, "symbol lookup error") on the first message
+    it serializes. On the Pi that was planner_server's first costmap publish, so the controller
+    kept that one costmap for the whole run. RTLD_NOW binds every symbol at load, so the check
+    fails here instead, before anything starts.
+    """
+    broken = []
+    for pkg in packages:
+        try:
+            lib_dir = os.path.join(get_package_prefix(pkg), 'lib')
+        except PackageNotFoundError:
+            continue
+        for lib in sorted(glob.glob(os.path.join(lib_dir, f'lib{pkg}__rosidl_typesupport_*.so'))):
+            try:
+                ctypes.CDLL(lib, mode=os.RTLD_NOW | os.RTLD_LOCAL)
+            except OSError as ex:
+                broken.append((lib, str(ex)))
+    return broken
 
 
 def default_map():
@@ -193,9 +227,16 @@ def _launch_setup(context):
                if not _have(p)]
     if missing:
         return [LogInfo(msg=(
-            f'[nav2_local] missing {", ".join(missing)}: sudo apt install '
+            f'[nav2_local] missing {", ".join(missing)}: {APT_SYNC} && sudo apt install '
             + ' '.join('ros-jazzy-' + p.replace('_', '-') for p in missing)
             + '; Nav2 NOT started'))]
+    broken = broken_typesupport()
+    if broken:
+        return [LogInfo(msg=(
+            '[nav2_local] ERROR: ROS packages from two apt syncs; Nav2 would die (exit 127) on '
+            f'its first costmap: {broken[0][1]}'
+            + (f' (and {len(broken) - 1} more)' if len(broken) > 1 else '')
+            + f'. Fix: {APT_SYNC}; Nav2 NOT started'))]
     if not map_yaml:
         return [LogInfo(msg=('[nav2_local] no map: pass map:=<boundary.yaml> (the default '
                              'share/autonomy/maps/boundary.yaml needs the autonomy package built); '
@@ -240,9 +281,9 @@ def _launch_setup(context):
         ))
     else:
         actions += [
-            LogInfo(msg=('[nav2_local] nav2_planner not installed (sudo apt install '
-                         'ros-jazzy-nav2-planner ros-jazzy-nav2-smac-planner): running the standalone '
-                         'costmap as /global_costmap/global_costmap, no planning')),
+            LogInfo(msg=(f'[nav2_local] nav2_planner not installed ({APT_SYNC} && sudo apt '
+                         'install ros-jazzy-nav2-planner ros-jazzy-nav2-smac-planner): running '
+                         'the standalone costmap as /global_costmap/global_costmap, no planning')),
             Node(
                 package='nav2_costmap_2d',
                 executable='nav2_costmap_2d',
