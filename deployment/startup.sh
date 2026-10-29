@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Boot script for the delivery robot Pi (user: delivery, host: raspi).
+# Boot script for the delivery robot Pi (user: delivery, host: delivery; ssh delivery@delivery.local).
 # On every start: fetch the repo, rebuild if anything changed, read
 # robot_config.yaml, then launch master_launch.py in the configured mode
-# (teleop / autonomous / autonomy). Designed to be run by systemd (see robot.service) but works
-# fine by hand: ~/delivery-robo/deployment/startup.sh
+# (teleop / autonomous / autonomy; `nav2: true` adds Nav2 to autonomy). Designed to be run by
+# systemd (see robot.service) but works fine by hand: ~/delivery-robo/deployment/startup.sh
 #
 # Laptop test with the Gazebo sim instead of the robot (config `mode: autonomy`, `sim: true`), from
 # inside delivery-autonomy's `nix develop` so Gazebo and the autonomy Python deps are there:
@@ -218,6 +218,16 @@ case "$MODE" in
 esac
 [ "$SIM" = true ] && [ "$MODE" != autonomy ] && log "WARNING: sim: true only applies to mode: autonomy; ignored in $MODE"
 
+# Nav2 local planning (master_launch.py nav2:=, autonomy only). Missing = false.
+NAV2=""
+[ -f "$CONFIG" ] && NAV2=$(run_logged cfg_get nav2)
+case "$NAV2" in
+  true|false) ;;
+  "") log "nav2 not set in config; using false"; NAV2=false ;;
+  *) log "WARNING: nav2 must be true or false, got '$NAV2'; using false"; NAV2=false ;;
+esac
+[ "$NAV2" = true ] && [ "$MODE" != autonomy ] && log "WARNING: nav2: true only applies to mode: autonomy; ignored in $MODE"
+
 # Optional: pin the DDS domain so the robot does not share domain 0 with everything else on
 # the WiFi it happens to join. Unset in the config = leave ROS_DOMAIN_ID as the environment has it.
 DOMAIN=""
@@ -237,7 +247,7 @@ log "source $WS/install/setup.bash exit=$?"
 run_logged command -v ros2
 stage "ROS launch"
 announce booting launching
-log "launching my_bringup master_launch.py mode:=$MODE sim:=$SIM robot_id:=$ROBOT_ID api_url:=$API_URL"
+log "launching my_bringup master_launch.py mode:=$MODE sim:=$SIM nav2:=$NAV2 robot_id:=$ROBOT_ID api_url:=$API_URL"
 log "handing off to ros2 after ${SECONDS}s; launch stdout/stderr continue in this log"
-exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "sim:=$SIM" "robot_id:=$ROBOT_ID" \
+exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "sim:=$SIM" "nav2:=$NAV2" "robot_id:=$ROBOT_ID" \
   ${API_URL:+"api_url:=$API_URL"}

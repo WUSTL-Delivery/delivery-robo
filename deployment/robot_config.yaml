@@ -17,6 +17,10 @@ mode: teleop
 # delivery-autonomy's `nix develop` with ROS_SETUP= (deployment/README.md, "Testing with the sim").
 sim: false
 
+# Nav2 local planning (mode: autonomy only): boundary-map costmap + planner_server + local_planner,
+# goals on /goal_pose or /nav/goal_node. Needs the apt Nav2 packages (deployment/install_deps.sh).
+nav2: false
+
 # DDS domain for every node started at boot (0-101). Leave commented to keep the default
 # (domain 0, shared with every other ROS 2 machine on the same network).
 # ros_domain_id: 42
