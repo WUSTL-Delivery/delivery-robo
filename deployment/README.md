@@ -1,14 +1,16 @@
 # Deployment — the robot Pi
 
-The robot's compute is a Raspberry Pi, hostname `raspi`, user `delivery`,
+The robot's compute is a Raspberry Pi 5, hostname `delivery`, user `delivery`,
 running **ROS 2 Jazzy** installed natively at `/opt/ros/jazzy`. The repo is
 cloned at `~/delivery-robo`.
 
 ## Connecting
 
 ```sh
-ssh delivery@raspi.local     # mDNS; use the IP if .local doesn't resolve
+ssh delivery@delivery.local     # mDNS; use the IP if .local doesn't resolve
 ```
+
+On the dev LAN the Pi has been at `192.168.1.59` (DHCP, so check the router if that fails).
 
 (Ask a team member for the password / current WiFi. The Pi joins WiFi via
 `wpa_supplicant.conf` in the home directory.)
@@ -24,7 +26,7 @@ start it:
 2. rebuilds `ros2_ws` with colcon **only if** the repo moved or there is no
    install yet (build failure falls back to the previous install);
 3. reads `deployment/robot_config.yaml` and launches
-   `ros2 launch my_bringup master_launch.py mode:=<mode>`.
+   `ros2 launch my_bringup master_launch.py mode:=<mode> sim:=<sim> nav2:=<nav2>`.
 
 So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
 `sudo systemctl restart robot.service`). No hand-building on the Pi.
@@ -34,6 +36,7 @@ So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
 ```yaml
 mode: teleop        # teleop | autonomous | autonomy
 sim: false          # laptop testing only, see "Testing with the sim" below
+nav2: false         # mode: autonomy only: Nav2 local planning (true | false)
 robot_id: robo-1    # name shown on the robo-web dashboard
 api_url: https://robo-web-ebon.vercel.app   # robo-web base URL (no trailing slash)
 # ros_domain_id: 42 # optional: DDS domain for every node started at boot
@@ -52,6 +55,13 @@ robot without a git commit (a local edit to a tracked file would block the
 boot-time `git pull`), copy it to `deployment/robot_config.local.yaml`
 (gitignored) — that file wins when present. `ROBOT_CONFIG=/path/to.yaml`
 overrides both. Unknown/missing mode falls back to `teleop`.
+
+- `nav2` — `true` adds Nav2 local planning to `mode: autonomy` (master_launch.py `nav2:=true`):
+  boundary-map costmap + `planner_server` + `local_planner` driving the MPPI controller, with goals
+  on `/goal_pose` or `/nav/goal_node`; it also turns on the controller's costmap (`use_costmap`).
+  Needs the apt Nav2 packages (`deployment/install_deps.sh`). Missing or unknown values fall back
+  to `false` (an unknown value logs a warning); `nav2: true` with another mode logs a warning and
+  is ignored. See `ros2_ws/src/hardware_bringup/README.md`, "Nav2 local planning".
 
 The same switch works by hand:
 `ros2 launch my_bringup master_launch.py mode:=autonomous`.
@@ -120,10 +130,12 @@ sim's `/gps/fix`, `/imu/data` and `/odom`, the controller on the sim's `/cmd_vel
 robot's `controller_server` values from `hardware.yaml` (but the Gazebo car's wheelbase and
 steering limit, not the robot's), and `gps_datum_tf` in its `local_enu`
 mode: it gates the sim's `/gps/fix` and publishes `map→odom` from the first fix the EKF takes, as
-that fix's Gazebo world position. No joystick, `twist_mux` or bridge. `startup.sh` does not
-pass `nav2`, so the controller runs without the costmap (`use_costmap` false). To test with
-Nav2, start `master_launch.py` by hand with `nav2:=true` next to a Jazzy terminal running Nav2
-(`hardware_bringup/README.md`, "Sim recipe").
+that fix's Gazebo world position. No joystick, `twist_mux` or bridge. With `nav2: false` (the
+default) the controller runs without the costmap (`use_costmap` false). To test with Nav2, set
+`nav2: true` in the sim config (or start `master_launch.py` by hand with `nav2:=true`) next to a
+Jazzy terminal running Nav2 (`hardware_bringup/README.md`, "Sim recipe"): the Lyrical sim shell
+has no Nav2 packages, so `master_launch.py` logs and skips its own Nav2 and only sets
+`use_costmap`.
 
 Gazebo and the autonomy Python deps come from delivery-autonomy's Nix flake, not from
 `/opt/ros/jazzy`, so run the boot script inside its devshell with `ROS_SETUP=` (use the ROS
@@ -214,7 +226,7 @@ ros2 launch my_bringup master_launch.py mode:=teleop robot_id:=robo-1 api_url:=h
     "state": "booting | teleop | autonomous",
     "mode": "teleop",
     "stage": "startup.sh | launching | ros",
-    "hostname": "raspi",
+    "hostname": "delivery",
     "ips": ["10.0.0.12"],
     "uptime_s": 83.4,
     "git_sha": "0356c3e",
