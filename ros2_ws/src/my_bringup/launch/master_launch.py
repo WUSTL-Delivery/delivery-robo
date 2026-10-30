@@ -30,6 +30,17 @@ from ament_index_python.packages import get_package_share_directory, PackageNotF
 # e.g. in the Lyrical sim shell, where Nav2 runs from a separate Jazzy terminal instead
 # (hardware_bringup/README.md, "Nav2 local planning"). nav2 also sets the MPPI controller's
 # use_costmap, so pass nav2:=true there as well when the Jazzy terminal runs Nav2.
+#
+# A missing obstacle sensor (TDM-52, the user's rule): with one of lidar / depth camera missing
+# the robot keeps planning and driving on the other; with both missing it stops driving
+# autonomously and the joystick still overrides.
+#   * nav2:=true with nav2_sources auto (robot) or fused also starts my_bringup scan_fusion
+#     (/scan_filtered + /camera/scan -> /scan_fused, fixed_frame odom from the EKF; with sim:=true
+#     the lidar is /scan). It publishes camera-only frames when the lidar is missing and nothing
+#     when both are, so the costmap goes stale and planning stops only then.
+#   * on the robot, hardware_bringup obstacle_guard (autonomy_real.launch.py) locks twist_mux's
+#     navigation input while both scans are silent, also with nav2:=false. lidar:=false and
+#     realsense:=false count as missing sensors. obstacle_guard:=false disables it for bench work.
 
 # NTRIP caster settings for the ublox_dgnss ntrip client. The committed values are the
 # historical ones (they are in git history already). deployment/ntrip.local.yaml (gitignored,
@@ -86,6 +97,54 @@ def _ntrip_settings():
     return settings
 
 
+def _obstacle_guard_arg():
+    """Declare obstacle_guard, passed to autonomy_real.launch.py (TDM-52)."""
+    return DeclareLaunchArgument(
+        'obstacle_guard', default_value='true', choices=['true', 'false'],
+        description='autonomy mode on the robot: block autonomous driving (twist_mux lock) while '
+                    'neither the lidar nor the depth camera publishes; false = disabled, for '
+                    'bench work only')
+
+
+def _scan_fusion_actions(mode, sim, nav2, nav2_sources):
+    """
+    Start my_bringup scan_fusion when Nav2's costmap reads /scan_fused (TDM-52).
+
+    That is mode:=autonomy with nav2:=true and nav2_sources fused, or auto on the robot (auto is
+    lidar in the sim). Inputs /scan_filtered (/scan with sim:=true) and /camera/scan. Motion
+    compensation in odom: state_estimation (autonomy_real.launch.py) publishes odom -> base_link,
+    which the costmap (global_frame odom) needs as well. Guarded like heartbeat_node against a
+    stale build without the executable.
+    """
+    is_fusion = IfCondition(PythonExpression(
+        ["'", mode, "' == 'autonomy' and '", nav2, "' == 'true' and ('", nav2_sources,
+         "' == 'fused' or ('", nav2_sources, "' == 'auto' and '", sim, "' != 'true'))"]))
+    try:
+        from ament_index_python.packages import get_package_prefix
+        exe = os.path.join(get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'scan_fusion')
+        available = os.path.exists(exe)
+    except Exception:  # noqa: BLE001
+        available = False
+    if not available:
+        return [LogInfo(
+            msg='[master_launch] WARNING: scan_fusion executable not found (stale build? rebuild '
+                'my_bringup); no /scan_fused, so the fused costmap goes stale and nothing is '
+                'planned',
+            condition=is_fusion,
+        )]
+    return [IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('my_bringup'), 'launch', 'scan_fusion.launch.py')),
+        launch_arguments={
+            'lidar_topic': PythonExpression(
+                ["'/scan' if '", sim, "' == 'true' else '/scan_filtered'"]),
+            'fixed_frame': 'odom',
+            'use_sim_time': sim,
+        }.items(),
+        condition=is_fusion,
+    )]
+
+
 def generate_launch_description():
    mode = LaunchConfiguration('mode')
    mode_arg = DeclareLaunchArgument(
@@ -117,7 +176,8 @@ def generate_launch_description():
       default_value='auto',
       choices=['auto', 'fused', 'separate', 'lidar'],
       description='with nav2:=true: costmap scan inputs (nav2_local.launch.py sources:=); auto = lidar '
-                  '(/scan) with sim:=true, else fused (/scan_fused, needs my_bringup scan_fusion)',
+                  '(/scan) with sim:=true, else fused (/scan_fused; auto and fused start '
+                  'my_bringup scan_fusion)',
    )
    robot_id = LaunchConfiguration('robot_id')
    api_url = LaunchConfiguration('api_url')
@@ -269,7 +329,8 @@ def generate_launch_description():
          autonomy_nodes.append(IncludeLaunchDescription(
              PythonLaunchDescriptionSource(os.path.join(hw_dir, 'launch', 'autonomy_real.launch.py')),
              # nav2: the controller slows and stops for the costmap only when Nav2 publishes one
-             launch_arguments={'sim': sim, 'nav2': nav2}.items(),
+             launch_arguments={'sim': sim, 'nav2': nav2,
+                               'obstacle_guard': LaunchConfiguration('obstacle_guard')}.items(),
              condition=is_autonomy,
          ))
       except PackageNotFoundError:
@@ -476,6 +537,7 @@ def generate_launch_description():
         api_url_arg,
         lidar_arg,
         realsense_arg,
+        _obstacle_guard_arg(),
         *([heartbeat_node] if heartbeat_available else []),
         *robot_description_actions,  # robot description (TF)
         joy_node, 
@@ -483,6 +545,7 @@ def generate_launch_description():
         *sensor_nodes,
         *autonomy_nodes,
         *nav2_actions,
+        *_scan_fusion_actions(mode, sim, nav2, nav2_sources),
         *sim_nodes,
         *lidar_nodes,
         *realsense_nodes,

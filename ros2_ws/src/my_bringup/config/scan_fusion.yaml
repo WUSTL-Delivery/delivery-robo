@@ -9,6 +9,7 @@ scan_fusion:
     output_frame: base_link
     # Empty permits bench checks without odometry. Set to odom for driving:
     # requires odom -> base_footprint/base_link TF at both capture timestamps.
+    # master_launch.py passes odom in mode:=autonomy (state_estimation publishes it).
     fixed_frame: ""
     bins: 360
     range_min: 0.05
@@ -18,6 +19,9 @@ scan_fusion:
     pair_wait_s: 0.05
     tf_wait_s: 0.1
     queue_size: 10
+    # TDM-52: an input with no fresh scan for this long is missing. Lidar missing ->
+    # camera-only frames; both missing -> nothing is published (the costmap goes stale).
+    input_timeout_s: 0.5
 
 # /scan_fused carries obstacle endpoints only. Missing, invalid and infinite
 # inputs become NaN, not free space. In a costmap use marking: true and

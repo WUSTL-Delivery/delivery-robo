@@ -76,6 +76,17 @@ Both count only while the robot heads within 90 deg of the final heading, so a f
 to a direct goal that faces back at the robot does not stop it as it passes the goal on the way
 out.
 
+Missing scans (TDM-52). The user's rule: with one of lidar / depth camera missing the robot keeps
+going on the other; with both missing it stops driving autonomously. ``scan_topics`` (the
+costmap's obstacle source topics; nav2_local.launch.py passes them) are subscribed raw, only to
+see whether they publish. A topic is silent when its newest message is older than
+``scan_timeout``. Every change of the silent set is logged once (from ``scan_timeout`` after
+startup on), every planning failure names the silent topics, and while a goal is active and
+*every* topic is silent the node sends one stop, stops replanning (also in the final approach)
+and logs it; it replans when one returns. With sources:=fused the costmap already refuses to
+plan then (/scan_fused stops only when both sensors are out); with sources:=separate this is
+what stops the robot. Empty ``scan_topics`` turns all of this off.
+
 Runs on a single-threaded executor: every action call is asynchronous (done-callbacks), nothing
 blocks a callback, and TF is read with the latest-available lookup.
 """
@@ -90,7 +101,10 @@ from nav_msgs.msg import Path
 from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.parameter import Parameter
+from rclpy.qos import qos_profile_sensor_data
 from rclpy.time import Time
+from sensor_msgs.msg import LaserScan
 from shared_types.action import ComputePath, FollowPath
 from std_msgs.msg import Empty, Int64
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -110,6 +124,7 @@ from hardware_bringup.route import (
     transform_pose,
     yaw_to_quaternion,
 )
+from hardware_bringup.sensor_watch import SensorWatch
 
 _STATUS_NAMES = {
     getattr(GoalStatus, n): n[len('STATUS_'):].lower() for n in dir(GoalStatus) if n.startswith('STATUS_')
@@ -146,6 +161,13 @@ class LocalPlanner(Node):
         goal_topic = p('goal_topic', '/goal_pose')
         goal_node_topic = p('goal_node_topic', '/nav/goal_node')
         cancel_topic = p('cancel_topic', '/nav/cancel')
+        # TDM-52: the costmap's scan topics, watched for logs and the all-silent stop
+        topics = self.declare_parameter('scan_topics', Parameter.Type.STRING_ARRAY).value
+        self._scan_topics = list(dict.fromkeys(t for t in topics or [] if t))
+        self._scans = SensorWatch(self._scan_topics, float(p('scan_timeout', 1.0)))
+        self._scans_since = time.monotonic()
+        self._silent_logged = None   # the silent set last logged
+        self._scan_stopped = False   # stopped because every scan topic is silent
 
         self._route = None         # Route in map, or None when there is no goal
         self._goal_gen = 0         # bumped on every new goal / cancel / arrival; stale replies compare it
@@ -168,6 +190,10 @@ class LocalPlanner(Node):
         self.create_subscription(PoseStamped, goal_topic, self._on_goal_pose, 10)
         self.create_subscription(Int64, goal_node_topic, self._on_goal_node, 10)
         self.create_subscription(Empty, cancel_topic, self._on_cancel, 10)
+        for topic in self._scan_topics:
+            self.create_subscription(
+                LaserScan, topic, lambda _msg, t=topic: self._scans.seen(t, time.monotonic()),
+                qos_profile_sensor_data, raw=True)
         self.create_timer(1.0 / rate_hz, self._tick)
 
         self.get_logger().info(
@@ -177,6 +203,9 @@ class LocalPlanner(Node):
             + f'; final approach {self._approach_distance} m, loop_margin {self._loop_margin} m'
             + f'; stops within {self._goal_tolerance} m of the goal or past its goal line '
             f'(+-{self._goal_line_distance} m)'
+            + (f'; scan topics {", ".join(self._scan_topics)} (silent after '
+               f'{self._scans.timeout} s; all silent -> stop)' if self._scan_topics
+               else '; no scan_topics: scans not watched')
         )
 
     def _declare(self, name, default):
@@ -240,6 +269,7 @@ class LocalPlanner(Node):
         self._ends_at_goal = False
         self._final_approach = False
         self._log_next_plan = True
+        self._scan_stopped = False
         self._abandon_plan()
         return self._goal_gen
 
@@ -322,11 +352,59 @@ class LocalPlanner(Node):
         self.get_logger().info('cancel: goal cleared' if had_goal else 'cancel (no goal was active)')
         self._send_stop('cancel')
 
+    # ------------------------------------------------------------------ scans (TDM-52)
+    def _check_scans(self):
+        """Log each change of the silent scan topics; True while every one of them is silent."""
+        if not self._scan_topics:
+            return False
+        now = time.monotonic()
+        if now - self._scans_since < self._scans.timeout:
+            return False   # startup: nothing can have arrived yet
+        silent = self._scans.silent(now)
+        if silent != self._silent_logged:
+            if not self._scans.ever_seen():
+                self.get_logger().info(
+                    f'scan topics: waiting for a first message on {", ".join(self._scan_topics)}')
+            elif not silent:
+                self.get_logger().info(f'scan topics all live: {", ".join(self._scan_topics)}')
+            elif len(silent) < len(self._scan_topics):
+                live = ', '.join(t for t in self._scan_topics if t not in silent)
+                self.get_logger().warning(
+                    f'scan topics silent: {self._scans.silent_summary(now)}; live: {live}')
+            else:
+                self.get_logger().error(
+                    f'scan topics ALL silent: {self._scans.silent_summary(now)}')
+            self._silent_logged = silent
+        return len(silent) == len(self._scan_topics)
+
+    def _scan_report(self):
+        """'; silent scan topics: ...' for a failure log ('' when scans are not watched)."""
+        if not self._scan_topics:
+            return ''
+        summary = self._scans.silent_summary(time.monotonic())
+        return f'; silent scan topics: {summary}' if summary else '; scan topics all live'
+
     # ------------------------------------------------------------------ planning loop
     def _tick(self):
+        all_silent = self._check_scans()
         route = self._route
         if route is None:
             return
+        # TDM-52: no scan at all -> stop and wait, also in the final approach
+        if all_silent:
+            if not self._scan_stopped:
+                self._scan_stopped = True
+                self._abandon_plan()
+                self.get_logger().error(
+                    'no scan topic publishes (' + self._scans.silent_summary(time.monotonic())
+                    + '): stopping and not replanning until one returns')
+                self._send_stop('no scans')
+                self._final_approach = False
+            return
+        if self._scan_stopped:
+            self._scan_stopped = False
+            self._log_next_plan = True
+            self.get_logger().info('a scan topic is back; replanning')
         pose = self._robot_pose()
         if pose is None:
             return
@@ -486,7 +564,8 @@ class LocalPlanner(Node):
         self._failures += 1
         nxt = self._offsets[self._failures % len(self._offsets)]
         self.get_logger().warning(
-            f'planning failed ({reason}); {self._failures} in a row, next carrot offset {nxt:+.1f} m')
+            f'planning failed ({reason}); {self._failures} in a row, next carrot offset {nxt:+.1f} m'
+            + self._scan_report())
         if not self._stop_sent:
             self._stop_sent = True
             self._send_stop('planning failed')

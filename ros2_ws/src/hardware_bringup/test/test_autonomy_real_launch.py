@@ -182,3 +182,42 @@ def test_robot_stops_where_local_planner_does_at_any_heading(controller_yaml):
 
     assert controller_yaml['xy_goal_tolerance'] == 0.5
     assert controller_yaml['yaw_goal_tolerance'] >= math.pi
+
+
+# ---------------------------------------------------------------- TDM-52: obstacle_guard
+def _nodes(tmp_path, sim, **extra):
+    from launch import LaunchContext
+    from launch_ros.actions import Node
+
+    context = LaunchContext()
+    context.launch_configurations.update({
+        'hardware_params': HARDWARE_YAML, 'gps_in_topic': '', 'ekf_cmd_vel_topic': '',
+        'sim': sim, 'nav2': 'false', 'planner_cache_dir': str(tmp_path), **extra})
+    return [a for a in autonomy_real._nodes(context) if isinstance(a, Node)], context
+
+
+@pytest.mark.parametrize('arg, enabled', [(None, True), ('true', True), ('false', False)])
+def test_tdm52_obstacle_guard_runs_on_the_robot(tmp_path, arg, enabled):
+    from launch_ros.utilities import evaluate_parameters
+
+    extra = {} if arg is None else {'obstacle_guard': arg}
+    nodes, context = _nodes(tmp_path, 'false', **extra)
+    (guard,) = [n for n in nodes if n.node_executable == 'obstacle_guard']
+    assert guard.node_package == 'hardware_bringup'
+    (params,) = evaluate_parameters(context, guard._Node__parameters)
+    # disabled still runs it: it publishes "unlocked", or twist_mux would block navigation
+    assert params == {'enabled': enabled}
+
+
+def test_tdm52_no_obstacle_guard_in_the_sim(tmp_path):
+    nodes, _ = _nodes(tmp_path, 'true')   # no twist_mux in the sim: the controller drives /cmd_vel
+    assert not [n for n in nodes if n.node_executable == 'obstacle_guard']
+
+
+def test_tdm52_obstacle_guard_argument_defaults_to_true(monkeypatch):
+    from launch.actions import DeclareLaunchArgument
+
+    monkeypatch.setattr(autonomy_real, 'get_package_share_directory', lambda _: PKG)
+    description = autonomy_real.generate_launch_description()
+    args = {a.name: a for a in description.entities if isinstance(a, DeclareLaunchArgument)}
+    assert ''.join(s.perform(None) for s in args['obstacle_guard'].default_value) == 'true'

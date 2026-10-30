@@ -145,7 +145,8 @@ def test_missing_camera_tf_degrades_after_bounded_wait(node):
     assert not instance.camera_used
 
 
-def test_output_stops_when_lidar_stops(node):
+def test_lidar_drives_output_until_input_timeout(node):
+    # TDM-52: a camera scan alone is not published while the lidar is still live.
     instance, now_ns, wall = node
     instance._on_lidar(message(3.0))
     ready(instance, wall)
@@ -153,9 +154,133 @@ def test_output_stops_when_lidar_stops(node):
     wall[0] += 0.5
     instance._on_camera(message(1.0, stamp_ns=now_ns[0]))
     instance._process()
+    assert len(instance.publisher.messages) == 1
+
+
+def stamp_ns(output):
+    return Time.from_msg(output.header.stamp).nanoseconds
+
+
+class CaptureLogger:
+    """Collect log lines by level."""
+
+    def __init__(self):
+        self.lines = []
+
+    def info(self, text, **_):
+        """Keep an info line."""
+        self.lines.append(('info', text))
+
+    def warn(self, text, **_):
+        """Keep a warning."""
+        self.lines.append(('warn', text))
+
+    def error(self, text, **_):
+        """Keep an error."""
+        self.lines.append(('error', text))
+
+
+def test_camera_only_after_lidar_goes_missing(node):
+    # TDM-52: lidar out, camera fine -> each camera scan is published on its own.
+    instance, now_ns, wall = node
+    instance._on_lidar(message(3.0))
+    ready(instance, wall)
+    now_ns[0] = 1_600_000_000           # lidar 0.6 s old > input_timeout_s 0.5
+    wall[0] += 0.6
+    instance._on_camera(message(1.5, stamp_ns=now_ns[0]))
+    instance._process()
+    output = instance.publisher.messages[-1]
+    assert len(instance.publisher.messages) == 2
+    assert stamp_ns(output) == 1_600_000_000
+    assert output.header.frame_id == 'base_link'
+    assert output.ranges[180] == pytest.approx(1.5)
+    assert np.count_nonzero(np.isfinite(output.ranges)) == 1
+    instance._process()                 # the same camera scan is never published twice
+    assert len(instance.publisher.messages) == 2
+    instance._diagnose()
+    status = instance.diagnostics.messages[-1].status[0]
+    values = {v.key: v.value for v in status.values}
+    assert status.level == DiagnosticStatus.WARN
+    assert values['output_mode'] == 'camera only'
+    assert values['lidar_live'] == 'False' and values['camera_live'] == 'True'
+
+
+def test_camera_only_from_startup_without_a_lidar(node):
+    instance, _, _ = node
+    instance._on_camera(message(2.0, stamp_ns=1_040_000_000))
+    instance._process()
+    assert stamp_ns(instance.publisher.messages[-1]) == 1_040_000_000
+    assert instance.output_mode == 'camera only'
+
+
+def test_nothing_published_when_both_inputs_are_missing(node):
+    instance, now_ns, wall = node
+    logger = CaptureLogger()
+    instance.get_logger = lambda: logger
+    instance._on_lidar(message(3.0))
+    instance._on_camera(message(1.0, stamp_ns=1_000_000_000))
+    ready(instance, wall)
+    assert len(instance.publisher.messages) == 1
+    now_ns[0] = 1_600_000_000
+    wall[0] += 0.6
+    instance._process()
+    instance._process()
     instance._diagnose()
     assert len(instance.publisher.messages) == 1
     assert instance.diagnostics.messages[-1].status[0].level == DiagnosticStatus.ERROR
+    errors = [text for level, text in logger.lines if level == 'error']
+    assert len(errors) == 1             # once per change, not once per tick
+    assert '/scan_filtered' in errors[0] and '/camera/scan' in errors[0]
+    assert 'both missing' in errors[0]
+
+
+def test_lidar_camera_lidar_handover_keeps_stamps_increasing(node):
+    instance, now_ns, wall = node
+    logger = CaptureLogger()
+    instance.get_logger = lambda: logger
+
+    def step(seconds):
+        now_ns[0] += round(seconds * 1e9)
+        wall[0] += seconds
+
+    # 1. lidar + camera: fused frames at the lidar stamps
+    for _ in range(3):
+        instance._on_lidar(message(3.0, stamp_ns=now_ns[0]))
+        instance._on_camera(message(2.0, stamp_ns=now_ns[0] + 10_000_000))
+        step(0.06)
+        instance._process()
+        step(0.04)
+    assert [m.ranges[180] for m in instance.publisher.messages] == pytest.approx([2.0] * 3)
+    # 2. lidar unplugged: camera every 0.1 s; camera-only once the lidar is 0.5 s old
+    for _ in range(10):
+        instance._on_camera(message(1.0, stamp_ns=now_ns[0]))
+        instance._process()
+        step(0.1)
+    camera_only = [m for m in instance.publisher.messages if m.ranges[180] == pytest.approx(1.0)]
+    # from the camera scans still within max_age_s when the lidar timed out, then each new one
+    assert len(camera_only) >= 4
+    assert stamp_ns(camera_only[0]) > stamp_ns(instance.publisher.messages[2])
+    # 3. lidar back, its first scan older than the last camera-only frame: dropped, not reordered
+    last = stamp_ns(instance.publisher.messages[-1])
+    instance._on_lidar(message(3.0, stamp_ns=last - 30_000_000))
+    instance._on_camera(message(1.0, stamp_ns=now_ns[0]))
+    step(0.06)
+    instance._process()
+    for _ in range(3):
+        instance._on_lidar(message(3.0, stamp_ns=now_ns[0]))
+        instance._on_camera(message(2.5, stamp_ns=now_ns[0]))
+        step(0.06)
+        instance._process()
+        step(0.04)
+    stamps = [stamp_ns(m) for m in instance.publisher.messages]
+    assert stamps == sorted(set(stamps))     # strictly increasing: no duplicate, no reorder
+    assert [m.ranges[180] for m in instance.publisher.messages[-3:]] == pytest.approx([2.5] * 3)
+    assert instance.output_mode == 'fused'
+    changes = [text for _, text in logger.lines if text.startswith('inputs:')]
+    assert len(changes) == 3
+    assert 'publishing fused' in changes[0]
+    assert 'camera-only' in changes[1]
+    assert 'publishing fused' in changes[2]
 
 
 def test_duplicate_lidar_does_not_republish(node):

@@ -19,7 +19,8 @@ override them at any moment, and one node owns the Arduino's serial port.
 |---|---|
 | `arduino_bridge` | Sole owner of the serial port. `/cmd_vel_out` → `m <pwm> <servo>`; polls `e` at 20 Hz → `/odom` (twist only) and `/wheel_ticks`; watchdog stops the motor 0.5 s after the last command; rejects NaN; publishes the command it really sent on `/cmd_vel_executed`. |
 | `joy_to_cmdvel` | Joy → Twist on `/cmd_vel_joy` while the enable button is held. Same stick mapping and servo range as `joystick_node`. No joystick present → zeros at top priority (robot held stopped). |
-| `twist_mux` | Upstream package. Joystick beats controller; a source drops out 0.5 s after it stops publishing. It never publishes zeros itself, which is why the bridge has the watchdog. |
+| `twist_mux` | Upstream package. Joystick beats controller; a source drops out 0.5 s after it stops publishing. It never publishes zeros itself, which is why the bridge has the watchdog. Lock `obstacle_sensors` (priority 50, on `/obstacle_sensors_lock`) blocks the controller and lets the joystick through. |
+| `obstacle_guard` | TDM-52. Locks `obstacle_sensors` while neither the lidar (`/scan_filtered`) nor the depth camera (`/camera/scan`) has published for 1 s, see [Missing obstacle sensors](#missing-obstacle-sensors). |
 | `gps_datum_tf` | Gates the GPS on `status` and finite values, converts best-effort → reliable QoS, forwards to the EKF once it subscribes, and publishes `map→odom` from the first forwarded fix (translation = UTM − planner origin, yaw = grid convergence ≈ +1.685°). |
 | `bench_mppi` | Times `mppi_step` on this CPU. Run it before the first drive. |
 
@@ -51,8 +52,35 @@ vehicle model. Its `controller_server` section holds the robot's other settings 
 delivery-autonomy MPPI controller, see [Controller parameters](#controller-parameters).
 
 `autonomy_real.launch.py` arguments: `hardware_params` (default `config/hardware.yaml`),
-`gps_in_topic`, `ekf_cmd_vel_topic`, `sim`, `planner_cache_dir`, and `nav2` (default `false`).
-`nav2` sets the controller's `use_costmap`. master_launch passes its own `sim` and `nav2`.
+`gps_in_topic`, `ekf_cmd_vel_topic`, `sim`, `planner_cache_dir`, `nav2` (default `false`) and
+`obstacle_guard` (default `true`). `nav2` sets the controller's `use_costmap`. master_launch
+passes its own `sim`, `nav2` and `obstacle_guard`.
+
+### Missing obstacle sensors
+
+The user's rule (TDM-52, 2026-10-29): with **one** of lidar / depth camera missing the robot
+keeps the same flow (plan, drive, stop at the goal) on the sensor that is left; with **both**
+missing it stops driving autonomously, because they are what it avoids obstacles with. The
+joystick still overrides.
+
+- **`obstacle_guard`** (robot only, started by `autonomy_real.launch.py` beside the controller)
+  covers every way a goal reaches the controller, including `nav2:=false` (`behavior.py`) and
+  local_planner's final approach. It watches `/scan_filtered` and `/camera/scan` (arrival
+  times only). When both have been silent for 1 s it publishes `true` on
+  `/obstacle_sensors_lock` and twist_mux masks `cmd_vel_nav`; the joystick (priority 100) still
+  passes. twist_mux then forwards nothing (it never sends a zero) and the bridge's 0.5 s
+  watchdog stops the motors. It releases as soon as either sensor publishes again. Every change
+  is logged once, naming the silent sensors. Fail-safe: twist_mux counts a lock that has not been
+  published for 0.5 s as engaged, so navigation is blocked at startup until a first scan and
+  whenever the guard is not running. `obstacle_guard:=false` (master_launch or
+  autonomy_real.launch.py) runs it disabled: it never locks and logs an error every 30 s.
+  Bench work only. `lidar:=false` / `realsense:=false` count as missing sensors.
+  Measured against the apt twist_mux 4.5.0 with fake publishers: the lock engaged 1.0 s after
+  the last scan, the bridge sent `m 0` 0.5 s later, the joystick drove through the lock, the
+  lock released 0.04-0.1 s after a scan came back, and navigation was blocked 0.4 s after the
+  guard was killed.
+- **Nav2** (`nav2:=true`): see [the costmap and a missing sensor](#the-costmap-and-a-missing-sensor).
+- **The sim** has no twist_mux and no guard; there local_planner's all-silent stop does the job.
 
 ## delivery-autonomy version
 
@@ -135,8 +163,8 @@ is not used.
 The Nav2 parameters are in `config/nav2_local.yaml`. `launch/nav2_local.launch.py` patches that
 file for its arguments. local_planner has no section there: it runs on its own defaults (see
 [local_planner parameters](#local_planner-parameters)), apart from `drive`, `use_sim_time`, and
-`planner_id`, which the launch file sets from `drive:=`, `sim:=` and planner_server's
-`planner_plugins`.
+`planner_id` and `scan_topics`, which the launch file sets from `drive:=`, `sim:=`, planner_server's
+`planner_plugins` and the obstacle layer's source topics.
 
 ### Running
 
@@ -164,15 +192,34 @@ ros2 launch hardware_bringup nav2_local.launch.py local_planner:=false   # costm
 
 | Mode | Marks obstacles | Only clears | Use |
 |---|---|---|---|
-| `fused` | `/scan_fused` | `/scan_filtered`, `/camera/scan` | Robot default. Needs `my_bringup scan_fusion` (branch `feat/lidar-depth-scan-fusion`, not merged yet). Until it is merged, use `separate`. |
+| `fused` | `/scan_fused` | `/scan_filtered`, `/camera/scan` | Robot default. `/scan_fused` comes from `my_bringup scan_fusion`, which master_launch starts with `nav2_sources` `auto` or `fused` (`fixed_frame:=odom`). Run it yourself next to a bare `nav2_local.launch.py`. |
 | `separate` | `/scan_filtered`, `/camera/scan` | – | Robot, lidar and depth camera each mark and clear. |
 | `lidar` | `scan_topic` | – | One LaserScan. The sim (`/scan`) or a robot without the camera. |
 
-Every source has an `expected_update_rate`. If a sensor stops publishing, the costmap goes
-stale and planning fails, so the robot stops. It does not plan on an old picture. The launch
-file degrades instead of failing: if the Nav2 packages or the map are missing, it logs the
-reason and starts nothing; if `nav2_msgs` or `shared_types` is missing, it skips only
+The launch file degrades instead of failing: if the Nav2 packages or the map are missing, it
+logs the reason and starts nothing; if `nav2_msgs` or `shared_types` is missing, it skips only
 local_planner. master_launch therefore runs as before in a shell without Nav2.
+
+#### The costmap and a missing sensor
+
+A source with an `expected_update_rate` makes the costmap "not current" once it has been silent
+that long; planner_server then refuses to plan (PlannerTimedOut) and local_planner stops the
+robot. Under the [missing-sensor rule](#missing-obstacle-sensors) only one source per mode keeps
+its rate (the launch sets the others to 0):
+
+| Mode | Keeps its rate | One sensor missing | Both missing |
+|---|---|---|---|
+| `fused` | `/scan_fused` (1.0 s) | scan_fusion publishes the other one alone (camera-only frames when the lidar is out, lidar-only when the camera is out): planning goes on | scan_fusion publishes nothing, the costmap goes stale, planning stops |
+| `separate` | none | the other one marks and clears alone | local_planner stops (below) |
+| `lidar` | the lidar (0.5 s) | – (this mode only uses the lidar) | the costmap goes stale |
+
+local_planner gets every source topic as `scan_topics`. It logs each change in which of them
+are silent ("scan topics silent: /camera/scan never received; live: /scan_fused, /scan"), adds
+the silent ones to every "planning failed" warning, and while a goal is active and **all** of
+them are silent it sends one stop, stops replanning (also in the final approach) and logs
+"no scan topic publishes (...)"; it replans when one returns. scan_fusion logs its own inputs
+once per change ("inputs: lidar /scan_filtered missing (no fresh scan for 0.5 s): publishing
+camera-only frames").
 
 ### Sending a goal
 
@@ -193,7 +240,7 @@ the plan is published but nothing moves.
 ### local_planner parameters
 
 Every parameter the node declares, with its default. The launch file passes only `drive`,
-`planner_id` and `use_sim_time`. To change any other, start the launch file with
+`planner_id`, `scan_topics` and `use_sim_time`. To change any other, start the launch file with
 `local_planner:=false` and run the node yourself:
 
 ```sh
@@ -223,6 +270,8 @@ ros2 run hardware_bringup local_planner --ros-args -p drive:=true -p rate_hz:=1.
 | `goal_topic` | `/goal_pose` | Direct goals (PoseStamped, any frame with a transform to `map_frame`). |
 | `goal_node_topic` | `/nav/goal_node` | OSM node goals (Int64). |
 | `cancel_topic` | `/nav/cancel` | Empty: stop now and forget the goal. |
+| `scan_topics` | unset | TDM-52. Obstacle scan topics to watch (subscribed raw, arrival times only); the launch file passes the costmap's source topics. Silent ones are logged on each change and with every planning failure; all silent with a goal active = one stop and no replanning until one returns. Unset or empty: not watched. |
+| `scan_timeout` | `1.0` | s (wall clock). A `scan_topics` topic is silent once its newest message is older than this. |
 
 ### Sim recipe (Lyrical Gazebo + Jazzy Nav2)
 
@@ -243,6 +292,9 @@ ros2 launch my_bringup master_launch.py mode:=autonomy sim:=true nav2:=true
 export ROS_DOMAIN_ID=57
 source /opt/ros/jazzy/setup.bash && source <jazzy_ws>/install/setup.bash
 ros2 launch hardware_bringup nav2_local.launch.py sim:=true drive:=true
+# or with the fused source, as on the robot (the sim has no camera: lidar-only frames)
+ros2 launch my_bringup scan_fusion.launch.py lidar_topic:=/scan fixed_frame:=odom use_sim_time:=true
+ros2 launch hardware_bringup nav2_local.launch.py sim:=true drive:=true sources:=fused
 ```
 
 Then send a goal from terminal 2 as shown above. Notes:
