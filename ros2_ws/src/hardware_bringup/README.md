@@ -33,7 +33,7 @@ Everything the EKF reads is what the plan's §2 table lists: `/imu/data` (angula
 ros2 launch my_bringup master_launch.py mode:=autonomy
 
 # pieces, for the bench
-ros2 launch hardware_bringup drive.launch.py [port:=/dev/serial/by-id/usb-...]   # joystick + mux + bridge
+ros2 launch hardware_bringup drive.launch.py [port:=...]   # joystick + mux + bridge; port defaults to /dev/motor
 ros2 launch hardware_bringup autonomy_real.launch.py [gps_in_topic:=/fix]        # datum + EKF + planner + controller
 
 # a goal (node id from the planner's "Sample Node IDs for testing:" log line)
@@ -403,8 +403,12 @@ needs no slack for them; or a smaller `stop_distance`, which is the user's call.
 ## Bench checks before the first drive (wheels off the ground)
 
 1. **Serial.** `ros2 launch hardware_bringup drive.launch.py`. The bridge logs `Arduino ready
-   (encoder count N)`. If it keeps saying `waiting for the Arduino reset` / `no encoder reply`,
-   check the port (`ls -l /dev/serial/by-id/`) and that the motor-controller sketch is flashed.
+   (encoder count N)`. It opens `/dev/motor` (`config/hardware.yaml` `port`), the board's udev
+   symlink, never a raw `/dev/ttyUSBn`: the lidar is one too. If it says `/dev/motor does not
+   exist`, run `sudo deployment/udev/install_udev.sh` once, or plug the board in (see
+   `deployment/README.md`, "Motor-controller board"). If it keeps saying `waiting for the Arduino
+   reset` / `no encoder reply`, check `ls -l /dev/motor` and that the motor-controller sketch is
+   flashed.
 2. **Command path.** `ros2 topic pub -r 10 /cmd_vel_out geometry_msgs/msg/Twist '{linear: {x: 0.3}}'`
    spins the motor forward and centres the servo; `'{linear: {x: 0.3}, angular: {z: 0.3}}'` turns
    the wheels left (CCW yaw). If they turn right, set `servo_deg_per_rad` negative. Publish

@@ -208,6 +208,8 @@ def generate_launch_description():
       respawn=True,
       respawn_delay=3.0,
       output='screen',
+      # motor board's udev symlink (deployment/udev/99-motor.rules); never a raw /dev/ttyUSBn
+      parameters=[{'device': '/dev/motor'}],
       condition=is_teleop,
    )
 

@@ -1,15 +1,35 @@
+import os
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
 import serial
 import time
 
+# The motor-controller board's udev symlink (deployment/udev/99-motor.rules). Never a raw
+# /dev/ttyUSBn: the RPLidar C1 is one too, and plug order decides which is ttyUSB0.
+DEFAULT_DEVICE = '/dev/motor'
+MOTOR_RULES = '/etc/udev/rules.d/99-motor.rules'
+UDEV_INSTALL = 'sudo deployment/udev/install_udev.sh'
+
+
+def missing_port_hint(device, rules=MOTOR_RULES):
+    """Say why ``device`` is missing and what to do; never suggests a raw /dev/ttyUSB*."""
+    if device != DEFAULT_DEVICE:
+        return f'{device} does not exist (check the `device` parameter)'
+    if not os.path.exists(rules):
+        return (f'{device} does not exist because its udev rule is not installed ({rules} '
+                f'missing). Run `{UDEV_INSTALL}` in the delivery-robo checkout, see '
+                f'deployment/README.md. Not falling back to /dev/ttyUSB*: that can be the lidar')
+    return f'{device} does not exist: is the motor-controller board plugged in?'
+
+
 class JoystickNode(Node):
     def __init__(self):
         super().__init__('joystick_node')
         
         # Declare parameters
-        self.declare_parameter('device', '/dev/ttyUSB0')
+        self.declare_parameter('device', DEFAULT_DEVICE)
         self.declare_parameter('baud_rate', 57600)
         self.declare_parameter('timeout', 1.0)
         self.declare_parameter('verbose', False)
@@ -27,13 +47,11 @@ class JoystickNode(Node):
         self.MAX_STEER = 25.0
         self.STEER_ORIGIN = 45.0
         
-        # Initialize Serial
-        try:
-            self.ser = serial.Serial(self.device, self.baud_rate, timeout=self.timeout)
-            self.get_logger().info(f"Opened serial port: {self.device} at {self.baud_rate}")
-        except Exception as e:
-            self.get_logger().error(f"Failed to open serial port {self.device}: {e}")
-            self.ser = None
+        # Initialize Serial; while it is closed (board unplugged, /dev/motor missing, write
+        # failure) retry every second, so teleop comes back without a restart
+        self.ser = None
+        self.open_serial()
+        self.reopen_timer = self.create_timer(1.0, self.open_serial)
 
         # Subscription
         self.subscription = self.create_subscription(
@@ -47,6 +65,23 @@ class JoystickNode(Node):
         )
 
         self.get_logger().info("Joystick control node (Python) started.")
+
+    def open_serial(self):
+        if self.ser is not None:
+            return
+        if not os.path.exists(self.device):
+            self.get_logger().error(
+                f'{missing_port_hint(self.device)}; retrying every second',
+                throttle_duration_sec=10.0)
+            return
+        try:
+            self.ser = serial.Serial(self.device, self.baud_rate, timeout=self.timeout)
+            self.get_logger().info(f'Opened serial port: {self.device} at {self.baud_rate}')
+        except Exception as e:
+            self.get_logger().error(
+                f'Failed to open serial port {self.device}: {e}; retrying every second',
+                throttle_duration_sec=10.0)
+            self.ser = None
 
     def joy_callback(self, msg):
         self.stored_msg = msg
@@ -82,7 +117,12 @@ class JoystickNode(Node):
                 try:
                     self.ser.write(command.encode())
                 except Exception as e:
-                    self.get_logger().error(f"Error writing to serial: {e}")
+                    self.get_logger().error(f'Error writing to serial: {e}; reopening')
+                    ser, self.ser = self.ser, None
+                    try:
+                        ser.close()
+                    except Exception:
+                        pass
 
 def main(args=None):
     rclpy.init(args=args)

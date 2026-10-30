@@ -15,7 +15,7 @@
 
 arduino_bridge:
   ros__parameters:
-    port: /dev/ttyUSB0            # use /dev/serial/by-id/usb-... so the u-blox cannot take ttyUSB0 on a reboot
+    port: /dev/motor              # udev symlink (deployment/udev/99-motor.rules); never a raw /dev/ttyUSBn (the lidar is one)
     baud_rate: 57600
     arduino_reset_s: 2.0          # bootloader window after the port opens; nothing is sent before it
     cmd_vel_topic: /cmd_vel_out
