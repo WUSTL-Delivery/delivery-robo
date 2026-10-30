@@ -25,7 +25,9 @@ start it:
    changes are never clobbered);
 2. rebuilds `ros2_ws` with colcon **only if** the repo moved or there is no
    install yet (build failure falls back to the previous install);
-3. reads `deployment/robot_config.yaml` and launches
+3. reads `deployment/robot_config.yaml`, logs a WARNING if `/dev/motor` or
+   `/dev/rplidar` is missing or the udev rules behind them are not installed
+   ([Motor-controller board](#motor-controller-board-devmotor-udev-symlink)), and launches
    `ros2 launch my_bringup master_launch.py mode:=<mode> sim:=<sim> nav2:=<nav2>`.
 
 So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
@@ -311,9 +313,10 @@ doesn't start twice.
 
 Things the Pi needs that no script installs yet — verify when reimaging:
 
-- serial ports: the Arduino and the u-blox can swap `ttyUSB` numbers across reboots. Point
-  `arduino_bridge`'s `port` (hardware_bringup `config/hardware.yaml`) at the stable
-  `/dev/serial/by-id/usb-...` symlink (`ls -l /dev/serial/by-id/`)
+- serial ports: `sudo deployment/udev/install_udev.sh` once per Pi. The motor-controller
+  board and the RPLidar C1 are both `/dev/ttyUSBn` and swap numbers with plug order, so the
+  nodes open them only as `/dev/motor` and `/dev/rplidar` (sections below), never a raw
+  `/dev/ttyUSBn`. The u-blox GPS is `ttyACM0`.
 - user groups: `dialout` (serial), `i2c`
 - `rplidar_sdk` is checked out at `~/rplidar_sdk` (lidar not yet wired into
   any launch)
@@ -347,7 +350,7 @@ cd ~/delivery-robo
 sudo deployment/udev/install_udev.sh
 ```
 
-It copies the rule to `/etc/udev/rules.d/`, runs
+It copies the rules (lidar, motor board, RealSense) to `/etc/udev/rules.d/`, runs
 `udevadm control --reload-rules` + `udevadm trigger`, and adds `delivery`
 to `dialout` (effective after re-login/reboot; the rule also sets
 `MODE=0666` so the port opens before that).
@@ -362,11 +365,12 @@ udevadm info -q symlink -n /dev/ttyUSB0   # should list "rplidar"
 
 ### Pinning to the C1's serial (do this if any other CP2102 is attached)
 
-The default rule matches **any** CP2102. The IMU (BNO08x) is on I2C and the
-u-blox GPS enumerates as `ttyACM*`, so neither collides — but the wheel
-encoder's microcontroller shows up as `/dev/ttyUSB*`, and if its board uses a
-CP2102 (common on ESP32 boards) it would also get `/dev/rplidar`. Check with
-`lsusb` (look for more than one `10c4:ea60`). If so, pin the rule:
+The default rule matches **any** CP2102. The IMU (BNO08x) is on I2C, the
+u-blox GPS enumerates as `ttyACM*`, and the motor-controller board is a WCH
+CH340 (`1a86`, [`/dev/motor`](#motor-controller-board-devmotor-udev-symlink)),
+so none of them collides. A CP2102 board added later (common on ESP32 boards)
+would also get `/dev/rplidar`. Check with `lsusb` (look for more than one
+`10c4:ea60`). If so, pin the rule:
 
 1. Plug in only the C1, then read its serial:
    ```sh
@@ -377,9 +381,84 @@ CP2102 (common on ESP32 boards) it would also get `/dev/rplidar`. Check with
 3. `sudo deployment/udev/install_udev.sh`, plug the other board back in, and
    confirm `ls -l /dev/rplidar` still points at the C1's tty.
 
-Note: the wheel-encoder node defaults to `port:=/dev/ttyUSB0`; with the C1
-also plugged in, which device gets `ttyUSB0` depends on enumeration order,
-so pass the encoder its own port (or give it its own udev symlink).
+## Motor-controller board (`/dev/motor` udev symlink)
+
+The motor-controller board (the Arduino behind the drive motor, steering
+servo and wheel encoder; 57600 baud) is a WCH CH340-family USB-serial device,
+vendor `1a86`. On the Pi it is
+`/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`. Like the C1 it is a
+`/dev/ttyUSBn`, and plug order decides which of the two gets `ttyUSB0`. Teleop
+and autonomy used to open `/dev/ttyUSB0`, so with the C1 enumerated first they
+wrote motor commands into the lidar. On the Oct 24 Pi test an Arduino write
+timed out in the same second the lidar dropped, and later `arduino_bridge`
+read failures ("multiple access on port?") ran alongside sllidar timeouts.
+`deployment/udev/99-motor.rules` gives the board `/dev/motor`, and everything
+that talks to it opens only that:
+
+| Node | Mode | Parameter | Set in |
+|---|---|---|---|
+| `joystick_control` `joystick_node` | teleop | `device` | `my_bringup/launch/master_launch.py`; the node's default is `/dev/motor` too |
+| `hardware_bringup` `arduino_bridge` | autonomy | `port` | `hardware_bringup/config/hardware.yaml`; `drive.launch.py port:=` overrides it |
+| `wheel_encoder` `wheel_encoder_node` | bench only (no launch file starts it) | `port` | the node's default |
+
+The rule matches vendor `1a86` with product `7523`, `7522` or `5523`. Those are
+all the WCH ids the kernel's `ch341` driver binds, and the `-port0` in the
+by-id name shows the board uses that driver. It matches the product as well as
+the vendor because udev's `ATTRS{}` also matches parent devices: a
+vendor-only rule would fire for anything plugged in behind a WCH USB hub chip,
+the lidar included. The C1 (`10c4`) and the GPS never match.
+
+**Only one CH340 device may be on the robot.** The CH340 has no USB serial
+number, so a second one (another Arduino Nano clone, say) looks identical to
+udev and the two would fight over `/dev/motor`.
+
+Install: the same one-time `sudo deployment/udev/install_udev.sh` as the lidar
+installs both rules (and the RealSense one), re-triggers the plugged-in
+devices, and prints `OK: ... /dev/motor -> ttyUSBn` (or says the board is not
+plugged in). It exits with an error if `/dev/motor` and `/dev/rplidar` ever
+point at the same tty.
+
+When `/dev/motor` is missing:
+
+- `startup.sh` logs it in its "serial devices" stage (`latest-startup.log`).
+  It names what to run if the rule is not installed or differs from the
+  repo's copy, and otherwise asks whether the board is plugged in. It cannot
+  sudo, so it only warns.
+- `joystick_node` and `arduino_bridge` log an ERROR every 10 s (for example
+  "`/dev/motor does not exist because its udev rule is not installed ... Run
+  sudo deployment/udev/install_udev.sh`") and retry the port every second.
+  They never fall back to a `/dev/ttyUSB*`. Teleop recovers by itself when the
+  board appears or is re-plugged, without a restart.
+
+### Pi verification (TDM-18)
+
+Not done yet: the Pi was unplugged when this landed. With the robot powered
+and this code on the Pi:
+
+1. `cd ~/delivery-robo && sudo deployment/udev/install_udev.sh`. Expect
+   `OK: ... /dev/rplidar -> ttyUSBn` and `OK: ... /dev/motor -> ttyUSBm`.
+2. Record the board's product id (it was never captured):
+   `udevadm info -q property -n /dev/motor | grep -E 'ID_VENDOR_ID|ID_MODEL_ID'`
+   should print `ID_VENDOR_ID=1a86` and `ID_MODEL_ID=7523` (or `7522`/`5523`).
+   If `/dev/motor` did not appear, run the same command on the board's
+   `/dev/ttyUSBn`. Add any other id to `99-motor.rules` and to
+   `my_bringup/test/test_serial_ports.py`.
+3. Plug order A: unplug both boards, plug in the motor board, then the C1.
+   `ls -l /dev/motor /dev/rplidar` must show two different `ttyUSB`s.
+4. Plug order B: unplug both, plug in the C1 first, then the motor board.
+   The `ttyUSB` numbers swap. The links must still point at different ttys.
+5. `sudo reboot` with both plugged in. After boot, the same check holds, and
+   the "serial devices" stage of `~/.local/state/delivery-robo/latest-startup.log`
+   shows both links with no WARNING.
+6. In `mode: teleop` (after each of 3-5): the stick drives and steers the
+   motors, and at the same time `ros2 topic hz /scan` shows ~10 Hz. The logs
+   (`~/.ros/log/`) have no "multiple access on port" and no sllidar timeouts.
+7. With teleop running, unplug the motor board. `control_node` logs
+   `Error writing to serial ...; reopening`, then `/dev/motor does not exist:
+   is the motor-controller board plugged in?`. Plug it back in: it logs
+   `Opened serial port: /dev/motor` and the stick drives again, no restart.
+8. Optional, `mode: autonomy`: `arduino_bridge` logs `opened /dev/motor` and
+   `Arduino ready`, and `/scan` stays at ~10 Hz.
 
 ## RealSense depth camera
 

@@ -237,6 +237,31 @@ if [ -n "$DOMAIN" ]; then
   log "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
 fi
 
+# --- 3b. Serial devices: warn only ---------------------------------------------
+# The nodes open the motor board and the lidar only by their udev symlinks, never a raw
+# /dev/ttyUSBn (plug order decides which board is ttyUSB0). This script can't sudo, so a Pi
+# without the rules (or with stale ones) only gets told what to run.
+stage "serial devices"
+UDEV_DIR="$REPO/deployment/udev"
+check_serial_link() {  # check_serial_link <symlink> <rules file> <board>
+  local link="/dev/$1" installed="/etc/udev/rules.d/$2"
+  if [ ! -f "$installed" ]; then
+    log "WARNING: $installed not installed, so $link never appears; run once: sudo $UDEV_DIR/install_udev.sh"
+  elif ! cmp -s "$UDEV_DIR/$2" "$installed"; then
+    log "WARNING: $installed differs from $UDEV_DIR/$2; re-run: sudo $UDEV_DIR/install_udev.sh"
+  elif [ -e "$link" ]; then
+    log "$link -> $(readlink -f "$link")"
+  else
+    log "WARNING: $link missing: is the $3 plugged in?"
+  fi
+}
+if [ "$SIM" = true ] && [ "$MODE" = autonomy ]; then
+  log "sim: /dev/motor and /dev/rplidar not needed"
+else
+  [ "$MODE" = autonomous ] || check_serial_link motor 99-motor.rules "motor-controller board"
+  check_serial_link rplidar 99-rplidar.rules "RPLidar C1"
+fi
+
 # --- 4. Launch -------------------------------------------------------------
 stage "ROS environment"
 source_ros
