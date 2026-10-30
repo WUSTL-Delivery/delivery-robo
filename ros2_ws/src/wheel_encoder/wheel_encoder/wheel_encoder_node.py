@@ -39,7 +39,7 @@ class WheelEncoderNode(Node):
         if raw_line:
             line = raw_line.decode('utf-8', errors='replace').strip()
             try:
-                line = str(float(line) * 5 / 6)
+                line = str(float(line) * 6 / 5)
             except ValueError:
                 pass
             msg = String()
