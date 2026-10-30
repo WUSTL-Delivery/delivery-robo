@@ -172,3 +172,13 @@ def test_robot_never_reverses_and_squeezes_past_a_centred_obstacle(controller_ya
     # 0.35 m (the default) stops the robot for good at an obstacle centred in a 3 m corridor;
     # 0.2 m was approved for the robot on 2026-10-16 (TDM-34)
     assert controller_yaml['stop_distance'] == 0.2
+
+
+def test_robot_stops_where_local_planner_does_at_any_heading(controller_yaml):
+    # TDM-45: the controller ends a goal within xy_goal_tolerance of the path's end (TDM-43), and
+    # local_planner sends its stop within goal_tolerance (0.5 m, its default). Equal, both stop at
+    # the same distance. yaw_goal_tolerance >= pi turns the controller's heading check off.
+    import math
+
+    assert controller_yaml['xy_goal_tolerance'] == 0.5
+    assert controller_yaml['yaw_goal_tolerance'] >= math.pi

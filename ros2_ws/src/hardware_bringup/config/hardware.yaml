@@ -83,3 +83,7 @@ controller_server:
     min_speed: 0.0                # m/s, never reverse. Default -0.5. Nav2's Dubins paths never reverse either
     stop_distance: 0.2            # m, stop for an obstacle this close to the path ahead. Default 0.35 stops the
                                   # robot for good at a box centred in a 3 m corridor (user-approved 2026-10-16)
+    xy_goal_tolerance: 0.5        # m (EKF), the goal is reached this close to the path's end. Default 0.25.
+                                  # = local_planner's goal_tolerance. At the path's end beyond it: goal aborted
+    yaw_goal_tolerance: 3.15      # rad, >= pi turns the heading check off: the robot needs no heading at the goal.
+                                  # Default 0.15 (8.6 deg); on the Oct 24 Pi test the robot drove on past its goal

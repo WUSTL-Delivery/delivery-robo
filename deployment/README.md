@@ -94,8 +94,9 @@ source install/setup.bash && ros2 run hardware_bringup bench_mppi   # MPPI must 
 ros2 launch hardware_bringup autonomy_real.launch.py                # warm the OSM cache; Ctrl-C after "Path Planning Action Server is ready."
 ```
 
-The submodule is pinned to delivery-autonomy's `dev` branch (commit `551467a`), which is on the
+The submodule is pinned to delivery-autonomy's `dev` branch (commit `43afae9`), which is on the
 submodule's remote (TDM-35); see `hardware_bringup/README.md`, "delivery-autonomy version".
+Since TDM-43 that controller stops at the end of the path instead of driving on past the goal.
 
 `install_deps.sh` first pip-installs `requirements.lock` (every version and hash
 pinned) into `~/.local` with `--break-system-packages` (PEP 668), then runs `rosdep install`
