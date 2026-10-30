@@ -362,7 +362,10 @@ class LocalPlanner(Node):
             return False   # startup: nothing can have arrived yet
         silent = self._scans.silent(now)
         if silent != self._silent_logged:
-            if not silent:
+            if not self._scans.ever_seen():
+                self.get_logger().info(
+                    f'scan topics: waiting for a first message on {", ".join(self._scan_topics)}')
+            elif not silent:
                 self.get_logger().info(f'scan topics all live: {", ".join(self._scan_topics)}')
             elif len(silent) < len(self._scan_topics):
                 live = ', '.join(t for t in self._scan_topics if t not in silent)

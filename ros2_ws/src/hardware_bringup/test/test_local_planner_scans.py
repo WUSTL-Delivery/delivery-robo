@@ -76,14 +76,21 @@ def test_all_silent_stops_once_and_replans_when_one_returns(planner, monkeypatch
     node._tick()
     node._tick()
     assert stops == ['no scans']
-    errors = [text for level, text in logger.lines if level == 'error']
-    assert errors[0].startswith('scan topics ALL silent')
-    assert errors[1].startswith('no scan topic publishes (/scan_fused never received')
+    assert logger.lines[0] == ('info', 'scan topics: waiting for a first message on '
+                                       '/scan_fused, /scan, /camera/scan')
+    (error,) = [text for level, text in logger.lines if level == 'error']
+    assert error.startswith('no scan topic publishes (/scan_fused never received')
     assert not poses                     # no planning while every topic is silent
     node._scans.seen('/scan', now[0])
     node._tick()
     assert stops == ['no scans'] and len(poses) == 1
     assert ('info', 'a scan topic is back; replanning') in logger.lines
+    now[0] += 1.5                        # it goes again: ALL silent is an error once seen
+    node._tick()
+    assert stops == ['no scans', 'no scans']
+    assert any(level == 'error' and text.startswith('scan topics ALL silent: /scan_fused never '
+                                                    'received, /scan silent 1.5 s')
+               for level, text in logger.lines)
 
 
 def test_no_scan_topics_watches_nothing(monkeypatch):
