@@ -1,8 +1,10 @@
 """Sole owner of the Arduino serial port: ``/cmd_vel_out`` in, ``/odom`` out.
 
-Why one node owns the port: ``joystick_node``, ``wheel_encoder_node`` and the ``sim/``
-``ackdrive_arduino`` HAL all default to ``/dev/ttyUSB0`` and cannot coexist. In the
-``autonomy`` mode this node is the only process that opens it.
+Why one node owns the port: ``joystick_node`` and ``wheel_encoder_node`` open the same
+board and cannot share it. In the ``autonomy`` mode this node is the only process that opens
+it. The port is ``/dev/motor``, the board's udev symlink
+(``deployment/udev/99-motor.rules``), never a raw ``/dev/ttyUSBn``: the RPLidar C1 is one too
+and plug order decides which is ``ttyUSB0``. When it is missing the node says what to run.
 
 Data flow::
 
@@ -24,6 +26,7 @@ Safety behaviour:
 * on shutdown a final stop command is written.
 """
 import math
+import os
 import threading
 import time
 from collections import deque
@@ -56,6 +59,21 @@ from hardware_bringup.serial_protocol import (
     parse_encoder_count,
 )
 
+DEFAULT_PORT = '/dev/motor'
+MOTOR_RULES = '/etc/udev/rules.d/99-motor.rules'
+UDEV_INSTALL = 'sudo deployment/udev/install_udev.sh'
+
+
+def missing_port_hint(port, rules=MOTOR_RULES):
+    """Say why ``port`` is missing and what to do; never suggests a raw /dev/ttyUSB*."""
+    if port != DEFAULT_PORT:
+        return f'{port} does not exist (check the `port` parameter / port:= argument)'
+    if not os.path.exists(rules):
+        return (f'{port} does not exist because its udev rule is not installed ({rules} '
+                f'missing). Run `{UDEV_INSTALL}` in the delivery-robo checkout, see '
+                f'deployment/README.md. Not falling back to /dev/ttyUSB*: that can be the lidar')
+    return f'{port} does not exist: is the motor-controller board plugged in?'
+
 
 class ArduinoBridge(Node):
     def __init__(self):
@@ -63,7 +81,7 @@ class ArduinoBridge(Node):
 
         p = self._declare
         # --- serial ---
-        self._port = p('port', '/dev/ttyUSB0')
+        self._port = p('port', DEFAULT_PORT)
         self._baud = int(p('baud_rate', 57600))
         self._reset_s = float(p('arduino_reset_s', 2.0))
         # --- topics / frames ---
@@ -158,6 +176,12 @@ class ArduinoBridge(Node):
     def _open_serial(self):
         if self._ser is not None:
             return True
+        if not os.path.exists(self._port):
+            self.get_logger().error(
+                f'{missing_port_hint(self._port)}; retrying every second',
+                throttle_duration_sec=10.0,
+            )
+            return False
         try:
             ser = serial.Serial(self._port, self._baud, timeout=0.05, write_timeout=0.2)
             ser.reset_input_buffer()

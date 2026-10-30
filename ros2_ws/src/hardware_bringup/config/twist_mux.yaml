@@ -1,9 +1,10 @@
 # Command arbitration for the autonomy mode.
 # Joystick (100) beats the autonomy controller (10); each source drops out 0.5 s after it
-# stops publishing. Output: /cmd_vel_out -> arduino_bridge.
+# stops publishing. The obstacle_sensors lock (50) sits between them. Output: /cmd_vel_out ->
+# arduino_bridge.
 #
-# use_stamped MUST be false: controller.py and joy_to_cmdvel publish plain geometry_msgs/Twist.
-# (sim/src/robo_courier/config/twist_mux.yaml says true and would silently drop both.)
+# use_stamped MUST be false: controller.py and joy_to_cmdvel publish plain geometry_msgs/Twist;
+# true would silently drop both.
 twist_mux:
   ros__parameters:
     use_stamped: false
@@ -16,3 +17,14 @@ twist_mux:
         topic: cmd_vel_joy
         timeout: 0.5
         priority: 100
+    # TDM-52: obstacle_guard (autonomy_real.launch.py) publishes true here while neither the
+    # lidar nor the depth camera is publishing. A lock masks every input with a lower priority:
+    # 50 blocks navigation (10) and lets the joystick (100) through. twist_mux then forwards
+    # nothing (it never sends a zero) and arduino_bridge's 0.5 s watchdog stops the motors.
+    # timeout 0.5: a guard that stops publishing (10 Hz) counts as locked, and so does one that
+    # has not published yet. Without obstacle_guard running, navigation never drives.
+    locks:
+      obstacle_sensors:
+        topic: obstacle_sensors_lock
+        timeout: 0.5
+        priority: 50

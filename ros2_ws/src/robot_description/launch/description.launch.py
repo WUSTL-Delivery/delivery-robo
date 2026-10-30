@@ -2,8 +2,9 @@
 
     ros2 launch robot_description description.launch.py
 
-Publishes the fixed TF chain base_footprint -> base_link -> lidar_link /
-imu_link / gps_link / camera_link from urdf/robot.urdf.xacro.
+Publishes the fixed TF tree base_link -> base_footprint / lidar_link /
+imu_link / gps_link / camera_link from urdf/robot.urdf.xacro. base_link is the
+root because the EKF publishes odom -> base_link.
 
 The xacro is processed at launch time, so editing the installed file (or the
 source file with --symlink-install) and relaunching is enough to change a

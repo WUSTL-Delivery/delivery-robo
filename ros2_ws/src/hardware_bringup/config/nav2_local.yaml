@@ -1,0 +1,277 @@
+# Nav2 for local path planning (TDM-21): map_server + planner_server's global
+# costmap + lifecycle manager. Loaded by launch/nav2_local.launch.py, which
+# patches this file before passing it on (it cannot reach the costmap sub-node
+# inside planner_server any other way):
+#   map:=        -> map_server.yaml_filename
+#   sources:=    -> obstacle_layer.observation_sources and each source's
+#                   marking/clearing (fused | separate | lidar, see below)
+#   scan_topic:= -> obstacle_layer.lidar.topic
+#   sim:=true    -> use_sim_time on every node, lidar on /scan, sources lidar
+# Edit values here; edit the source wiring in the launch file.
+#
+# The costmap is built from three inputs:
+#   * the boundary map (delivery-autonomy autonomy/maps/boundary.yaml, frame
+#     map: free within 1.5 m of each OSM walkway edge, occupied elsewhere),
+#     served by map_server on /map and copied in by static_layer;
+#   * the EKF: odom -> base_link from delivery-autonomy state_estimation, plus
+#     map -> odom (gps_datum_tf on the robot, a static transform in the sim);
+#   * the scans, in obstacle_layer.
+# Frame: odom, rolling 40 x 40 m around base_link. odom rather than map
+# because obstacle_layer filters heights in the costmap's global frame and the
+# sim's map -> odom has z = 2 (scans would sit at z ~2.4 in map and be dropped
+# by max_obstacle_height); the EKF's base_link is at z = 0 in odom.
+# static_layer still lines the map up through TF (incl. map -> odom yaw), cell
+# by cell, because the window is rolling.
+#
+# Output: /global_costmap/costmap (nav_msgs/OccupancyGrid, frame odom).
+
+map_server:
+  ros__parameters:
+    use_sim_time: false
+    yaml_filename: ""         # set by the launch from map:=
+    topic_name: map           # -> /map, transient local
+    frame_id: map
+
+# Local path planning (TDM-22): Smac Hybrid-A* on the costmap below. The only
+# client is hardware_bringup local_planner: ComputePathToPose, planner_id
+# GridBased, use_start false (start = base_link from TF), goal in map with a
+# heading along the route, ~12 m ahead, at 2 Hz. The path comes back in the
+# costmap frame (odom); local_planner moves it to map for /follow_path.
+# Parameter names checked against nav2_smac_planner 1.3.13 (Jazzy).
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    expected_planner_frequency: 2.0   # Hz; local_planner's rate_hz (only a warning threshold)
+    planner_plugins: ["GridBased"]    # = local_planner's planner_id
+    GridBased:
+      plugin: "nav2_smac_planner::SmacPlannerHybrid"
+      # Forward-only Dubins primitives: the MPPI follower can't drive cusps.
+      # Measured on the boundary map's 3 m corridors (TDM-22):
+      #  * a goal behind the robot gets a forward U-turn (it fits at radius
+      #    1.0, footprint >= 0.2 m from the walls), never a reversing move;
+      #  * no forward path at all -> ABORTED, NO_VALID_PATH (208), logged by
+      #    planner_server as "no valid path found", within 0.25 s;
+      #  * a goal too close for an S-curve (0.5 m off to the side and < ~1.3 m
+      #    ahead, or 0.2 m and < ~0.9 m) comes back as a ~12 m loop, not a
+      #    failure. local_planner must not replan inside ~2 m of its final goal.
+      motion_model_for_search: "DUBIN"
+      minimum_turning_radius: 1.0     # m; real robot 0.78, sim 0.73, so the follower keeps margin
+      angle_quantization_bins: 72     # 5 deg heading bins
+      # Search + smoothing share this budget. local_planner replans every 0.5 s
+      # with one request in flight, so a slower plan only skips replans.
+      # Laptop: 2-6 ms for 12 m along a corridor, ~40 ms for a U-turn + loop.
+      max_planning_time: 1.0          # s
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      terminal_checking_interval: 5000
+      # If the exact goal pose can't be reached, return the best path ending
+      # within this of it (search running out, not the loop case above).
+      tolerance: 0.25                 # m; = the follower's goal tolerance
+      allow_unknown: false            # off-map cells are unknown: never plan through them
+      downsample_costmap: false       # plan at the costmap's 0.1 m
+      downsampling_factor: 1
+      # The window rolls with the robot and the scans change it every update,
+      # so the obstacle heuristic must be recomputed for every request.
+      cache_obstacle_heuristic: false
+      downsample_obstacle_heuristic: true
+      # Nav2 Smac defaults (set explicitly so they are visible) except cost_penalty.
+      # Docs range 1.3-3.5. 3.0 rather than the default 2.0: past a 0.6 m scan
+      # obstacle in the 3 m corridor the path centres in the gap (footprint
+      # 0.29 m from the obstacle) instead of brushing it (0.08 m at 2.0).
+      # TDM-42 (median plan footprint clearance past a centred box, recorded
+      # costmaps, smoothing on): 3.0 0.068 m, 4.0 0.058 m, 5.0 0.063 m, quadratic
+      # 0.083 m; without smoothing 3.0 0.122 m, 2.0 0.104 m, 4.0 0.110 m,
+      # quadratic 0.118 m. Higher values also pull harder back to the centreline.
+      cost_penalty: 3.0
+      use_quadratic_cost_penalty: false
+      non_straight_penalty: 1.2           # 1.5: 0.069 m past the box (TDM-42, as above)
+      change_penalty: 0.0                 # 0.5: 0.051 m
+      reverse_penalty: 2.0            # unused with DUBIN
+      retrospective_penalty: 0.015
+      lookup_table_size: 20.0         # m; Dubins heuristic table, > the ~12 m carrot
+      analytic_expansion_ratio: 3.5
+      analytic_expansion_max_length: 3.0  # m
+      # Dubins shots only happen within 3 m of the carrot, ~12 m ahead, so they never
+      # reach an obstacle the robot is passing: 50 changed no plan past the box (TDM-42).
+      analytic_expansion_max_cost: 200.0
+      analytic_expansion_max_cost_override: false
+      allow_primitive_interpolation: false
+      debug_visualizations: false
+      # No smoothing (TDM-42). The smoother is cost-blind: it straightens the swerve
+      # round an obstacle, and that pulls the path back towards the obstacle. On 64
+      # recorded costmaps of a box centred in the corridor (bench replay of the
+      # TDM-34/40 sim runs), the median plan kept its footprint 0.068 m from the box
+      # with smoothing and 0.122 m without, and ran 0.80 m off the centreline
+      # abreast of the box instead of 0.87 m (the middle of the gap is 0.91 m). The
+      # raw path is radius-1.0 arcs and straights, which the MPPI follows as well.
+      # Planning time is unchanged (2-8 ms).
+      smooth_path: false
+      smoother:                       # unused while smooth_path is false
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+        do_refinement: true
+        refinement_num: 2
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      global_frame: odom
+      robot_base_frame: base_link
+      transform_tolerance: 0.3    # s; the Pi is slow, be lenient on TF lookups
+      update_frequency: 4.0       # Hz; planning runs at ~2 Hz
+      # Hz; full grid every time. The controller's obstacle speed limit reads it
+      # (delivery-autonomy TDM-32). Publishing happens inside the update loop, so
+      # anything >= update_frequency publishes every update: 4 Hz here.
+      publish_frequency: 5.0
+      always_send_full_costmap: true
+      rolling_window: true
+      width: 40                   # m, centred on base_link
+      height: 40
+      resolution: 0.1             # m/cell, same as the boundary map
+      track_unknown_space: true   # off-map cells stay unknown (planner: not allowed)
+      # Chassis 0.8 x 0.4 m; the wheels stick out past it (URDF track 0.55 +
+      # wheel 0.08), hence +/-0.32 m. TODO(TDM-13): real measurement.
+      footprint: "[[0.40, 0.32], [0.40, -0.32], [-0.40, -0.32], [-0.40, 0.32]]"
+      footprint_padding: 0.0
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        enabled: true
+        map_topic: /map
+        map_subscribe_transient_local: true
+        subscribe_to_updates: false
+        # Must stay false (verified on Jazzy nav2_costmap_2d 1.3.13): StaticLayer
+        # clears the footprint in its own map-frame copy of the map but with
+        # the footprint's odom coordinates, so with map -> odom != identity it
+        # punches robot-shaped holes in the walls at (robot pose in odom) read
+        # as map coordinates, never under the robot, and the holes stay until
+        # map_server republishes. A pose on a wall therefore stays lethal: the
+        # planner refuses to start there, which is the safe failure.
+        footprint_clearing_enabled: false
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        footprint_clearing_enabled: true
+        combination_method: 1      # max with the static layer: walls stay walls
+        # The launch replaces observation_sources and each source's marking /
+        # clearing per sources:=
+        #   fused    : fused marks; lidar and camera only clear (default on the robot)
+        #   separate : lidar and camera both mark and clear
+        #   lidar    : lidar marks and clears (default with sim:=true, on /scan)
+        observation_sources: fused lidar camera
+        # expected_update_rate is the longest gap (s) between a source's messages
+        # before the costmap reports itself not current; planner_server then
+        # refuses to plan (PlannerTimedOut) and local_planner stops the robot.
+        # TDM-52, the user's rule: one of lidar / camera missing -> keep going on
+        # the other; both missing -> stop. So the launch keeps the rate on one
+        # source per mode only and sets the others to 0 (never stale):
+        #   fused    : fused keeps 1.0 (scan_fusion publishes it while either
+        #              sensor is live); lidar and camera 0
+        #   separate : lidar and camera 0 (local_planner stops when both are silent)
+        #   lidar    : lidar keeps 0.5
+        # The values below are what a source gets when it gates.
+
+        # my_bringup scan_fusion: lidar + camera obstacle endpoints in one
+        # LaserScan (base_link, 360 bins, range_max 12). Missing bins are NaN,
+        # not free space, so it must never clear.
+        fused:
+          topic: /scan_fused
+          data_type: "LaserScan"
+          sensor_frame: ""         # header frame
+          marking: true
+          clearing: false
+          inf_is_valid: false
+          obstacle_max_range: 8.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: -1.0   # planar scan in base_link (z 0)
+          expected_update_rate: 1.0
+          observation_persistence: 0.0
+
+        # RPLidar C1 after laser_filters (/scan_filtered, lidar_link, ~10 Hz).
+        # Sim: Gazebo's /scan. inf = no return = free out to raytrace_max_range,
+        # so a person who walks away is cleared even with nothing behind them.
+        # Both publish inf for no-return bins: the sim natively, and on the
+        # robot laser_filters passes sllidar's +inf through unchanged (TDM-27:
+        # my_bringup/config/laser_filters.yaml upper_replacement_value .inf;
+        # before that the range filter turned every no-return into 0.0, which
+        # neither marks nor clears). inf_is_valid: true makes those bins clear.
+        # Near-field self-hits (<= 0.15 m) arrive as NaN and are ignored.
+        lidar:
+          topic: /scan_filtered    # scan_topic:= / sim:=true override
+          data_type: "LaserScan"
+          sensor_frame: ""
+          marking: true
+          clearing: true
+          inf_is_valid: true
+          obstacle_max_range: 8.0  # < range_max (C1 12+ m, sim 20 m): inf never marks
+          obstacle_min_range: 0.0
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          expected_update_rate: 0.5
+          observation_persistence: 0.0
+
+        # RealSense via my_bringup depth_obstacles: floor-removed obstacles as
+        # a LaserScan in base_link. +inf bins mean "floor seen, nothing in the
+        # way" and arrive as range_max 4.0, so obstacle_max_range stays below it.
+        camera:
+          topic: /camera/scan
+          data_type: "LaserScan"
+          sensor_frame: ""
+          marking: true
+          clearing: true
+          inf_is_valid: true
+          obstacle_max_range: 3.9
+          obstacle_min_range: 0.0
+          raytrace_max_range: 3.0  # don't clear past where the floor is reliably seen
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: -1.0   # heights already filtered by depth_obstacles
+          expected_update_rate: 1.0
+          observation_persistence: 0.0
+
+      # Inflation is what keeps Hybrid-A* in the middle of a corridor (TDM-29). The boundary
+      # map's corridors are 3 m wide (walls 1.5 m from the walkway), so with a radius under
+      # 1.5 m the middle is a zero-cost strip the path wanders in: at 0.8 m (1.4 m strip) 12-18 m
+      # paths drifted up to 0.5-0.6 m off the centreline. Cost = 252 * exp(-k * (d - 0.32)) for
+      # d (m from a wall or scan obstacle) between the inscribed radius 0.32 and the radius; with
+      # 1.8 m / k 2.0 the centreline costs 24 of 252, 0.4 m off 53, 0.8 m off 118, inscribed
+      # (lethal for the footprint) still only the 0.32 m by each wall. Measured with the TDM-22
+      # checks on a straight 3 m corridor (scratch plan_check_tdm29.py):
+      #   radius / k   max |offset| from the centreline   footprint clearance past a 0.6 m
+      #                12 m (2 stretches), 18 m path      obstacle in the middle
+      #   0.8 / 3.0    0.51, 0.60, 0.58 m                 0.22 m
+      #   1.6 / 3.0    0.26, 0.24, 0.28 m                 0.23 m
+      #   1.8 / 2.0    0.19, 0.11, 0.18 m                 0.22-0.23 m (1.6 / 2.0: same in 3 m)
+      #   1.8 / 1.5    0.19, 0.11, 0.18 m                 0.23 m, but 0.18 m (2.0: 0.27) past an
+      #                                                   off-centre 0.8 m obstacle
+      # A start 0.8 m off the centreline still plans and is back within 0.2 m after ~2 m.
+      # Obstacle clearance is set by Smac's path smoother (cost-blind; it cuts towards the
+      # obstacle: 0.31 m with smooth_path false) and cost_penalty, not by inflation.
+      # TDM-42 replayed recorded costmaps of a centred box: scaling 1.0 / 1.5 kept the plans
+      # closer to the box (median footprint clearance 0.022 / 0.057 m, against 0.068 m at
+      # 2.0), 3.0 / 4.0 a little further (0.084 m; without smoothing 0.117 / 0.124 m against
+      # 0.122 m). Not worth the weaker centring TDM-29 measured above 2.0.
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 1.8      # m; > the 1.5 m corridor half-width, > circumscribed radius 0.51
+        cost_scaling_factor: 2.0
+
+lifecycle_manager_nav2_local:
+  ros__parameters:
+    use_sim_time: false
+    autostart: true
+    # The launch sets node_names (and bond_timeout 0 when it falls back to the
+    # standalone costmap, which never opens a bond).
+    node_names: ["map_server", "planner_server"]
+    bond_timeout: 4.0

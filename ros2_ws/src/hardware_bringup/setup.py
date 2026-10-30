@@ -28,6 +28,8 @@ setup(
             'joy_to_cmdvel = hardware_bringup.joy_to_cmdvel:main',
             'gps_datum_tf = hardware_bringup.gps_datum_tf:main',
             'bench_mppi = hardware_bringup.bench_mppi:main',
+            'local_planner = hardware_bringup.local_planner:main',
+            'obstacle_guard = hardware_bringup.obstacle_guard:main',
         ],
     },
 )

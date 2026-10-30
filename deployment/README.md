@@ -1,14 +1,16 @@
 # Deployment — the robot Pi
 
-The robot's compute is a Raspberry Pi, hostname `raspi`, user `delivery`,
+The robot's compute is a Raspberry Pi 5, hostname `delivery`, user `delivery`,
 running **ROS 2 Jazzy** installed natively at `/opt/ros/jazzy`. The repo is
 cloned at `~/delivery-robo`.
 
 ## Connecting
 
 ```sh
-ssh delivery@raspi.local     # mDNS; use the IP if .local doesn't resolve
+ssh delivery@delivery.local     # mDNS; use the IP if .local doesn't resolve
 ```
+
+On the dev LAN the Pi has been at `192.168.1.59` (DHCP, so check the router if that fails).
 
 (Ask a team member for the password / current WiFi. The Pi joins WiFi via
 `wpa_supplicant.conf` in the home directory.)
@@ -23,8 +25,10 @@ start it:
    changes are never clobbered);
 2. rebuilds `ros2_ws` with colcon **only if** the repo moved or there is no
    install yet (build failure falls back to the previous install);
-3. reads `deployment/robot_config.yaml` and launches
-   `ros2 launch my_bringup master_launch.py mode:=<mode>`.
+3. reads `deployment/robot_config.yaml`, logs a WARNING if `/dev/motor` or
+   `/dev/rplidar` is missing or the udev rules behind them are not installed
+   ([Motor-controller board](#motor-controller-board-devmotor-udev-symlink)), and launches
+   `ros2 launch my_bringup master_launch.py mode:=<mode> sim:=<sim> nav2:=<nav2>`.
 
 So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
 `sudo systemctl restart robot.service`). No hand-building on the Pi.
@@ -34,6 +38,7 @@ So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
 ```yaml
 mode: teleop        # teleop | autonomous | autonomy
 sim: false          # laptop testing only, see "Testing with the sim" below
+nav2: false         # mode: autonomy only: Nav2 local planning (true | false)
 robot_id: robo-1    # name shown on the robo-web dashboard
 api_url: https://robo-web-ebon.vercel.app   # robo-web base URL (no trailing slash)
 # ros_domain_id: 42 # optional: DDS domain for every node started at boot
@@ -53,15 +58,18 @@ boot-time `git pull`), copy it to `deployment/robot_config.local.yaml`
 (gitignored) — that file wins when present. `ROBOT_CONFIG=/path/to.yaml`
 overrides both. Unknown/missing mode falls back to `teleop`.
 
+- `nav2` — `true` adds Nav2 local planning to `mode: autonomy` (master_launch.py `nav2:=true`):
+  boundary-map costmap + `planner_server` + `local_planner` driving the MPPI controller, with goals
+  on `/goal_pose` or `/nav/goal_node`; it also turns on the controller's costmap (`use_costmap`).
+  Needs the apt Nav2 packages (`deployment/install_deps.sh`). Missing or unknown values fall back
+  to `false` (an unknown value logs a warning); `nav2: true` with another mode logs a warning and
+  is ignored. See `ros2_ws/src/hardware_bringup/README.md`, "Nav2 local planning".
+
 The same switch works by hand:
 `ros2 launch my_bringup master_launch.py mode:=autonomous`.
 
 - `robot_id` / `api_url` — identity and endpoint for the status heartbeat
   (see below). Fill in `api_url` with the Vercel URL of `../robo-web`.
-
-Note: the ros2_control drive stack (`launch_real_robot.launch.py` in `sim/`)
-is still launched manually and must not run together with `mode: autonomy`: both open the
-Arduino's serial port.
 
 ## Autonomy mode
 
@@ -73,7 +81,9 @@ checklist and the calibration procedure):
 |---|---|---|
 | `arduino_bridge` | hardware_bringup | only owner of the Arduino serial port: `/cmd_vel_out` → motor/servo, encoder → `/odom`, 0.5 s watchdog |
 | `joy_node` + `joy_to_cmdvel` | joy, hardware_bringup | joystick → `/cmd_vel_joy` while the enable button is held |
-| `twist_mux` | twist_mux (apt) | joystick (priority 100) over controller (10) → `/cmd_vel_out` |
+| `twist_mux` | twist_mux (apt) | joystick (priority 100) over controller (10) → `/cmd_vel_out`; lock `obstacle_sensors` (50) |
+| `obstacle_guard` | hardware_bringup | no lidar and no depth-camera scan for 1 s → locks twist_mux: the controller is blocked, the joystick still drives (TDM-52; one sensor missing keeps driving) |
+| `scan_fusion` | my_bringup | with `nav2: true`: `/scan_filtered` + `/camera/scan` → `/scan_fused` for the costmap; either sensor alone keeps it going |
 | `gps_datum_tf` | hardware_bringup | gates `/fix` → `/gps/fix`, publishes `map→odom` from the first fix |
 | `state_estimation`, `global_planning_server`, `controller_server` | autonomy (submodule) | the delivery-autonomy EKF, planner and MPPI controller with hardware parameters |
 | `imu_publisher`, ublox + NTRIP | imu_package, ublox_dgnss | as in `autonomous` |
@@ -82,16 +92,30 @@ One-time setup on the Pi (as `delivery`):
 
 ```sh
 cd ~/delivery-robo && git pull && git submodule update --init      # startup.sh also does this
-deployment/install_autonomy_deps.sh                                 # jax, osmnx, geopandas, joy, twist_mux ...
+deployment/install_deps.sh                                          # pinned pip set, then rosdep
 cd ros2_ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install --packages-ignore simulation
 source install/setup.bash && ros2 run hardware_bringup bench_mppi   # MPPI must fit the 100 ms control tick
+ros2 launch hardware_bringup autonomy_real.launch.py                # warm the OSM cache; Ctrl-C after "Path Planning Action Server is ready."
 ```
 
-`install_autonomy_deps.sh` pip-installs into `~/.local` with `--break-system-packages`
-(PEP 668). Current `jax` needs numpy 2, so the whole numeric stack (numpy, scipy, pandas,
-shapely, pyproj, geopandas, osmnx) comes from pip as one consistent set; the apt copies stay
-installed for ROS but are shadowed for this user. Apt-built extensions such as
-`python3-opencv` stop importing under numpy 2; nothing in `ros2_ws` uses them.
+The submodule is pinned to delivery-autonomy's `dev` branch (commit `43afae9`), which is on the
+submodule's remote (TDM-35); see `hardware_bringup/README.md`, "delivery-autonomy version".
+Since TDM-43 that controller stops at the end of the path instead of driving on past the goal.
+
+`install_deps.sh` first pip-installs `requirements.lock` (every version and hash
+pinned) into `~/.local` with `--break-system-packages` (PEP 668), then runs `rosdep install`
+over `ros2_ws/src`, so every dependency declared in a `package.xml` is installed. Keys missing
+from the public rosdep index (pip-only drivers) are defined in `deployment/rosdep.yaml`. Run it
+after the submodule update: `hardware_bringup` depends on `shared_types` from delivery-autonomy,
+which rosdep only finds in the checkout. Current
+`jax` needs numpy 2, so the whole numeric stack (numpy, scipy, pandas, shapely, pyproj,
+geopandas, osmnx) comes from pip as one consistent set; the apt copies stay installed for ROS
+but are shadowed for this user. Apt-built extensions such as `python3-opencv` stop importing
+under numpy 2; nothing in `ros2_ws` uses them.
+
+Adding a dependency: declare it in the package's `package.xml`. If it is pip-only, also add it
+to `requirements.txt`, regenerate the lock (command in its header), and add a key to
+`rosdep.yaml`.
 
 The planner downloads the OSM footway graph from Overpass on every start and caches it in
 `~/.cache/delivery_autonomy/cache` (the launch sets that as its working directory). Start it
@@ -107,8 +131,16 @@ place of the robot: `startup.sh` also builds the `simulation` package, and `mast
 starts `run_simulator.sh` (Gazebo + robot spawn + `ros_gz_bridge`) and `simulation.launch.py`
 (robot state publisher, ground truth, RViz) instead of the sensors and the drive chain. The
 autonomy nodes come from the same `autonomy_real.launch.py` as on the robot, with sim time, the
-sim's `/gps/fix`, `/imu/data` and `/odom`, the controller on the sim's `/cmd_vel`, and the fixed
-spawn-pose `map→odom` instead of `gps_datum_tf`. No joystick, `twist_mux` or bridge.
+sim's `/gps/fix`, `/imu/data` and `/odom`, the controller on the sim's `/cmd_vel` with the
+robot's `controller_server` values from `hardware.yaml` (but the Gazebo car's wheelbase and
+steering limit, not the robot's), and `gps_datum_tf` in its `local_enu`
+mode: it gates the sim's `/gps/fix` and publishes `map→odom` from the first fix the EKF takes, as
+that fix's Gazebo world position. No joystick, `twist_mux` or bridge. With `nav2: false` (the
+default) the controller runs without the costmap (`use_costmap` false). To test with Nav2, set
+`nav2: true` in the sim config (or start `master_launch.py` by hand with `nav2:=true`) next to a
+Jazzy terminal running Nav2 (`hardware_bringup/README.md`, "Sim recipe"): the Lyrical sim shell
+has no Nav2 packages, so `master_launch.py` logs and skips its own Nav2 and only sets
+`use_costmap`.
 
 Gazebo and the autonomy Python deps come from delivery-autonomy's Nix flake, not from
 `/opt/ros/jazzy`, so run the boot script inside its devshell with `ROS_SETUP=` (use the ROS
@@ -150,7 +182,17 @@ mountpoint: RTX_RTCM34
 username: <user>
 password: <password>
 use_https: false
+send_gga: true      # RTX_RTCM34 is a network RTK (VRS) stream: no GGA, no corrections
+fix_topic: /fix
 ```
+
+`RTX_RTCM34` is a MoDOT network RTK (VRS) mountpoint. The caster accepts the login but sends
+no RTCM until the rover reports its position in a GGA sentence, so `send_gga` must stay on
+(the ntrip client takes the position from `/fix`). To check corrections are flowing:
+`ros2 topic echo /ubx_rxm_rtcm --once` (messages arrive, `msg_used: 2`) and
+`ros2 topic echo /ubx_nav_status --once` shows `diff_soln: true`; `/fix` then reports
+`status.status: 1`. The ntrip client logs `sending GGA to caster: $GPGGA,...` followed by
+`receiving RTCM from mountpoint 'RTX_RTCM34'`.
 
 Any key left out keeps the committed default.
 
@@ -189,7 +231,7 @@ ros2 launch my_bringup master_launch.py mode:=teleop robot_id:=robo-1 api_url:=h
     "state": "booting | teleop | autonomous",
     "mode": "teleop",
     "stage": "startup.sh | launching | ros",
-    "hostname": "raspi",
+    "hostname": "delivery",
     "ips": ["10.0.0.12"],
     "uptime_s": 83.4,
     "git_sha": "0356c3e",
@@ -273,16 +315,11 @@ doesn't start twice.
 
 Things the Pi needs that no script installs yet — verify when reimaging:
 
-- pip: `adafruit-circuitpython-bno08x` (+ Blinka `board`/`busio`) for the IMU;
-  `pyserial` for the serial nodes. `deployment/install_autonomy_deps.sh` covers the
-  autonomy-mode Python packages (`deployment/autonomy-requirements.txt`).
-- apt/ROS: `ublox_dgnss` (+ ntrip client), `twist_mux`, `joy`, `ros2_control` stack
-- serial ports: the Arduino and the u-blox can swap `ttyUSB` numbers across reboots. Point
-  `arduino_bridge`'s `port` (hardware_bringup `config/hardware.yaml`) at the stable
-  `/dev/serial/by-id/usb-...` symlink (`ls -l /dev/serial/by-id/`)
+- serial ports: `sudo deployment/udev/install_udev.sh` once per Pi. The motor-controller
+  board and the RPLidar C1 are both `/dev/ttyUSBn` and swap numbers with plug order, so the
+  nodes open them only as `/dev/motor` and `/dev/rplidar` (sections below), never a raw
+  `/dev/ttyUSBn`. The u-blox GPS is `ttyACM0`.
 - user groups: `dialout` (serial), `i2c`
-- the `serial` package must be built with
-  `colcon build --packages-select serial --cmake-args -DCMAKE_POSITION_INDEPENDENT_CODE=ON`
 - `rplidar_sdk` is checked out at `~/rplidar_sdk` (lidar not yet wired into
   any launch)
 - stray copies exist in the home dir (`~/relivery-robo-old`, a loose
@@ -315,7 +352,7 @@ cd ~/delivery-robo
 sudo deployment/udev/install_udev.sh
 ```
 
-It copies the rule to `/etc/udev/rules.d/`, runs
+It copies the rules (lidar, motor board, RealSense) to `/etc/udev/rules.d/`, runs
 `udevadm control --reload-rules` + `udevadm trigger`, and adds `delivery`
 to `dialout` (effective after re-login/reboot; the rule also sets
 `MODE=0666` so the port opens before that).
@@ -330,11 +367,12 @@ udevadm info -q symlink -n /dev/ttyUSB0   # should list "rplidar"
 
 ### Pinning to the C1's serial (do this if any other CP2102 is attached)
 
-The default rule matches **any** CP2102. The IMU (BNO08x) is on I2C and the
-u-blox GPS enumerates as `ttyACM*`, so neither collides — but the wheel
-encoder's microcontroller shows up as `/dev/ttyUSB*`, and if its board uses a
-CP2102 (common on ESP32 boards) it would also get `/dev/rplidar`. Check with
-`lsusb` (look for more than one `10c4:ea60`). If so, pin the rule:
+The default rule matches **any** CP2102. The IMU (BNO08x) is on I2C, the
+u-blox GPS enumerates as `ttyACM*`, and the motor-controller board is a WCH
+CH340 (`1a86`, [`/dev/motor`](#motor-controller-board-devmotor-udev-symlink)),
+so none of them collides. A CP2102 board added later (common on ESP32 boards)
+would also get `/dev/rplidar`. Check with `lsusb` (look for more than one
+`10c4:ea60`). If so, pin the rule:
 
 1. Plug in only the C1, then read its serial:
    ```sh
@@ -345,9 +383,84 @@ CP2102 (common on ESP32 boards) it would also get `/dev/rplidar`. Check with
 3. `sudo deployment/udev/install_udev.sh`, plug the other board back in, and
    confirm `ls -l /dev/rplidar` still points at the C1's tty.
 
-Note: the wheel-encoder node defaults to `port:=/dev/ttyUSB0`; with the C1
-also plugged in, which device gets `ttyUSB0` depends on enumeration order,
-so pass the encoder its own port (or give it its own udev symlink).
+## Motor-controller board (`/dev/motor` udev symlink)
+
+The motor-controller board (the Arduino behind the drive motor, steering
+servo and wheel encoder; 57600 baud) is a WCH CH340-family USB-serial device,
+vendor `1a86`. On the Pi it is
+`/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`. Like the C1 it is a
+`/dev/ttyUSBn`, and plug order decides which of the two gets `ttyUSB0`. Teleop
+and autonomy used to open `/dev/ttyUSB0`, so with the C1 enumerated first they
+wrote motor commands into the lidar. On the Oct 24 Pi test an Arduino write
+timed out in the same second the lidar dropped, and later `arduino_bridge`
+read failures ("multiple access on port?") ran alongside sllidar timeouts.
+`deployment/udev/99-motor.rules` gives the board `/dev/motor`, and everything
+that talks to it opens only that:
+
+| Node | Mode | Parameter | Set in |
+|---|---|---|---|
+| `joystick_control` `joystick_node` | teleop | `device` | `my_bringup/launch/master_launch.py`; the node's default is `/dev/motor` too |
+| `hardware_bringup` `arduino_bridge` | autonomy | `port` | `hardware_bringup/config/hardware.yaml`; `drive.launch.py port:=` overrides it |
+| `wheel_encoder` `wheel_encoder_node` | bench only (no launch file starts it) | `port` | the node's default |
+
+The rule matches vendor `1a86` with product `7523`, `7522` or `5523`. Those are
+all the WCH ids the kernel's `ch341` driver binds, and the `-port0` in the
+by-id name shows the board uses that driver. It matches the product as well as
+the vendor because udev's `ATTRS{}` also matches parent devices: a
+vendor-only rule would fire for anything plugged in behind a WCH USB hub chip,
+the lidar included. The C1 (`10c4`) and the GPS never match.
+
+**Only one CH340 device may be on the robot.** The CH340 has no USB serial
+number, so a second one (another Arduino Nano clone, say) looks identical to
+udev and the two would fight over `/dev/motor`.
+
+Install: the same one-time `sudo deployment/udev/install_udev.sh` as the lidar
+installs both rules (and the RealSense one), re-triggers the plugged-in
+devices, and prints `OK: ... /dev/motor -> ttyUSBn` (or says the board is not
+plugged in). It exits with an error if `/dev/motor` and `/dev/rplidar` ever
+point at the same tty.
+
+When `/dev/motor` is missing:
+
+- `startup.sh` logs it in its "serial devices" stage (`latest-startup.log`).
+  It names what to run if the rule is not installed or differs from the
+  repo's copy, and otherwise asks whether the board is plugged in. It cannot
+  sudo, so it only warns.
+- `joystick_node` and `arduino_bridge` log an ERROR every 10 s (for example
+  "`/dev/motor does not exist because its udev rule is not installed ... Run
+  sudo deployment/udev/install_udev.sh`") and retry the port every second.
+  They never fall back to a `/dev/ttyUSB*`. Teleop recovers by itself when the
+  board appears or is re-plugged, without a restart.
+
+### Pi verification (TDM-18)
+
+Not done yet: the Pi was unplugged when this landed. With the robot powered
+and this code on the Pi:
+
+1. `cd ~/delivery-robo && sudo deployment/udev/install_udev.sh`. Expect
+   `OK: ... /dev/rplidar -> ttyUSBn` and `OK: ... /dev/motor -> ttyUSBm`.
+2. Record the board's product id (it was never captured):
+   `udevadm info -q property -n /dev/motor | grep -E 'ID_VENDOR_ID|ID_MODEL_ID'`
+   should print `ID_VENDOR_ID=1a86` and `ID_MODEL_ID=7523` (or `7522`/`5523`).
+   If `/dev/motor` did not appear, run the same command on the board's
+   `/dev/ttyUSBn`. Add any other id to `99-motor.rules` and to
+   `my_bringup/test/test_serial_ports.py`.
+3. Plug order A: unplug both boards, plug in the motor board, then the C1.
+   `ls -l /dev/motor /dev/rplidar` must show two different `ttyUSB`s.
+4. Plug order B: unplug both, plug in the C1 first, then the motor board.
+   The `ttyUSB` numbers swap. The links must still point at different ttys.
+5. `sudo reboot` with both plugged in. After boot, the same check holds, and
+   the "serial devices" stage of `~/.local/state/delivery-robo/latest-startup.log`
+   shows both links with no WARNING.
+6. In `mode: teleop` (after each of 3-5): the stick drives and steers the
+   motors, and at the same time `ros2 topic hz /scan` shows ~10 Hz. The logs
+   (`~/.ros/log/`) have no "multiple access on port" and no sllidar timeouts.
+7. With teleop running, unplug the motor board. `control_node` logs
+   `Error writing to serial ...; reopening`, then `/dev/motor does not exist:
+   is the motor-controller board plugged in?`. Plug it back in: it logs
+   `Opened serial port: /dev/motor` and the stick drives again, no restart.
+8. Optional, `mode: autonomy`: `arduino_bridge` logs `opened /dev/motor` and
+   `Arduino ready`, and `/scan` stays at ~10 Hz.
 
 ## RealSense depth camera
 
@@ -399,7 +512,7 @@ the C1 is plugged in; `lidar:=false` turns it off):
 
 - `/scan`: raw `sensor_msgs/LaserScan` from `sllidar_node`, ~10 Hz, frame `lidar_link`
 - `/scan_filtered`: the same scan with the robot body removed (laser_filters)
-- TF `base_footprint -> base_link -> lidar_link` from `robot_state_publisher`
+- TF `base_link -> lidar_link` (and `base_link -> base_footprint`) from `robot_state_publisher`
 
 To check that Nav2 really builds a costmap from it (robot-centred, no odometry
 needed), run next to the robot stack and view `/costmap` in RViz as a

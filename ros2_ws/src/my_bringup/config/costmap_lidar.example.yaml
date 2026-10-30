@@ -17,15 +17,17 @@
 #    - scan frame   : lidar_link      (header.frame_id of /scan_filtered)
 #    - camera scan  : /camera/scan    (LaserScan in base_link, floor removed by
 #                     my_bringup/depth_obstacles; range_max 4.0)
-#    - TF chain     : base_footprint -> base_link -> lidar_link  (robot URDF)
+#    - TF chain     : base_link -> lidar_link, base_link -> base_footprint
+#                     (robot URDF; base_link is the root)
 #    - odom frame   : odom            (delivery-autonomy EKF broadcasts
 #                     odom -> base_link and publishes /state_estimation/odom)
 #    - global frame : map             (delivery-autonomy looks up map -> base_link)
 #
 #  NOTE on robot_base_frame: the ticket contract uses base_link, which is also
-#  the child frame delivery-autonomy's EKF publishes. If the odom TF is ever
-#  re-parented to base_footprint (REP-105 style), switch both costmaps to
-#  base_footprint -- the 2D costmap does not care about the 0.15 m z-offset.
+#  the child frame delivery-autonomy's EKF publishes (odom -> base_link). The
+#  URDF therefore roots at base_link and hangs base_footprint 0.15 m below it
+#  (TDM-20), so base_footprint also resolves from odom; either works as
+#  robot_base_frame -- the 2D costmap does not care about the z-offset.
 #
 #  Usage (once wired): pass it as a params file to nav2 costmap nodes, e.g.
 #    ros2 launch nav2_bringup navigation_launch.py \

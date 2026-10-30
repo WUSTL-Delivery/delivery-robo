@@ -19,12 +19,30 @@
   <depend>tf2_msgs</depend>
   <depend>python3-serial</depend>
 
+  <!-- local_planner (TDM-23): Nav2 ComputePathToPose client, TF, and the delivery-autonomy actions. -->
+  <depend>action_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>shared_types</depend>
+
   <!-- Started by the launch files; installed from apt (ros-jazzy-joy, ros-jazzy-twist-mux). -->
   <exec_depend>joy</exec_depend>
   <exec_depend>twist_mux</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
+  <!-- TDM-21: launch/nav2_local.launch.py (boundary map + costmap + planner_server).
+       nav2_smac_planner is the planner_server plugin named in config/nav2_local.yaml. -->
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_smac_planner</exec_depend>
+  <exec_depend>nav2_costmap_2d</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
 
   <export>

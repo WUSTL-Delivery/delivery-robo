@@ -1,18 +1,21 @@
-# Hardware calibration and drive-chain parameters for the hardware_bringup nodes.
+# Hardware calibration and drive-chain parameters for the hardware_bringup nodes, plus the
+# robot's settings for delivery-autonomy's controller (controller_server, at the end).
 # Loaded by launch/drive.launch.py and launch/autonomy_real.launch.py.
 #
 # Values under /** are used by MORE THAN ONE node and must stay identical for all of them,
 # so they are declared once here. README.md "Calibration" says how to measure each number.
+# wheelbase and max_steer_rad also set the controller's vehicle model (controller_server).
 
 /**:
   ros__parameters:
     wheelbase: 0.36322            # m, rear axle to front axle. URDF: 0.36322, HAL: 0.30. Tape-measure it.
+                                  # Also MPPI's model: the yaw rate it sends is converted back with this
     min_speed_for_steer: 0.05     # m/s floor for the yaw-rate <-> steering conversion (stick steers at standstill)
-    max_steer_rad: 0.4363         # rad road-wheel limit = 25 deg, joystick_node's range
+    max_steer_rad: 0.4363         # rad road-wheel limit = 25 deg, joystick_node's range. Also MPPI's steering limit
 
 arduino_bridge:
   ros__parameters:
-    port: /dev/ttyUSB0            # use /dev/serial/by-id/usb-... so the u-blox cannot take ttyUSB0 on a reboot
+    port: /dev/motor              # udev symlink (deployment/udev/99-motor.rules); never a raw /dev/ttyUSBn (the lidar is one)
     baud_rate: 57600
     arduino_reset_s: 2.0          # bootloader window after the port opens; nothing is sent before it
     cmd_vel_topic: /cmd_vel_out
@@ -65,3 +68,22 @@ gps_datum_tf:
     odom_frame: odom
     wait_for_subscriber: true     # forward only once the EKF is listening, so its first fix is the datum
     restamp: false                # true = stamp forwarded fixes with the node clock (if the driver's stamps are off)
+
+# delivery-autonomy's MPPI follower (autonomy controller, delivery-autonomy `dev`). Only the values
+# that differ from its defaults; README.md "Controller parameters" lists every parameter and why.
+# use_costmap is not here: autonomy_real.launch.py sets it from its nav2 argument.
+# Its vehicle model: wheelbase and max_steer_rad come from /** above, the values arduino_bridge
+# converts the controller's yaw rate with. steer_tau, drive_tau and max_accel are not set: the
+# robot's lags are unmeasured, so the controller keeps its defaults (fitted to the sim car).
+# With sim:=true, autonomy_real.launch.py puts the sim car's whole vehicle back (0.5 m, 0.6 rad).
+controller_server:
+  ros__parameters:
+    max_speed: 1.0                # m/s, cruise speed and forward cap. Default 1.5 = joystick full stick, and
+                                  # pwm_per_mps is still a guess, so start lower. MPPI accepts (0, 1.5]
+    min_speed: 0.0                # m/s, never reverse. Default -0.5. Nav2's Dubins paths never reverse either
+    stop_distance: 0.2            # m, stop for an obstacle this close to the path ahead. Default 0.35 stops the
+                                  # robot for good at a box centred in a 3 m corridor (user-approved 2026-10-16)
+    xy_goal_tolerance: 0.5        # m (EKF), the goal is reached this close to the path's end. Default 0.25.
+                                  # = local_planner's goal_tolerance. At the path's end beyond it: goal aborted
+    yaw_goal_tolerance: 3.15      # rad, >= pi turns the heading check off: the robot needs no heading at the goal.
+                                  # Default 0.15 (8.6 deg); on the Oct 24 Pi test the robot drove on past its goal

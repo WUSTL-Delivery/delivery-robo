@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Boot script for the delivery robot Pi (user: delivery, host: raspi).
+# Boot script for the delivery robot Pi (user: delivery, host: delivery; ssh delivery@delivery.local).
 # On every start: fetch the repo, rebuild if anything changed, read
 # robot_config.yaml, then launch master_launch.py in the configured mode
-# (teleop / autonomous / autonomy). Designed to be run by systemd (see robot.service) but works
-# fine by hand: ~/delivery-robo/deployment/startup.sh
+# (teleop / autonomous / autonomy; `nav2: true` adds Nav2 to autonomy). Designed to be run by
+# systemd (see robot.service) but works fine by hand: ~/delivery-robo/deployment/startup.sh
 #
 # Laptop test with the Gazebo sim instead of the robot (config `mode: autonomy`, `sim: true`), from
 # inside delivery-autonomy's `nix develop` so Gazebo and the autonomy Python deps are there:
@@ -133,12 +133,11 @@ else
   log "WARNING: fetch failed (exit=$fetch_status); see Git's error above — starting with the existing build; no fetch retry this run"
 fi
 
-# --- 1b. Sync submodules (delivery-autonomy, sllidar_ros2) -------------------
+# --- 1b. Sync submodules -----------------------------------------------------
 # Runs every boot, not only after a pull: a Pi that pulled before a submodule
 # existed still has an empty directory. Bounded + non-fatal, like the fetch
-# above. Only the paths registered in .gitmodules: the repo also carries
-# gitlinks with no .gitmodules entry (librealsense, ublox_dgnss, sim/src/serial),
-# and a bare `git submodule update` aborts on the first of those with
+# above. Only the paths registered in .gitmodules: a gitlink without an entry
+# makes a bare `git submodule update` abort with
 # "fatal: No url found for submodule path ..." before fetching anything.
 # Offline with an empty delivery-autonomy -> autonomy mode has no autonomy nodes
 # (master_launch warns and skips them); teleop is unaffected.
@@ -219,6 +218,16 @@ case "$MODE" in
 esac
 [ "$SIM" = true ] && [ "$MODE" != autonomy ] && log "WARNING: sim: true only applies to mode: autonomy; ignored in $MODE"
 
+# Nav2 local planning (master_launch.py nav2:=, autonomy only). Missing = false.
+NAV2=""
+[ -f "$CONFIG" ] && NAV2=$(run_logged cfg_get nav2)
+case "$NAV2" in
+  true|false) ;;
+  "") log "nav2 not set in config; using false"; NAV2=false ;;
+  *) log "WARNING: nav2 must be true or false, got '$NAV2'; using false"; NAV2=false ;;
+esac
+[ "$NAV2" = true ] && [ "$MODE" != autonomy ] && log "WARNING: nav2: true only applies to mode: autonomy; ignored in $MODE"
+
 # Optional: pin the DDS domain so the robot does not share domain 0 with everything else on
 # the WiFi it happens to join. Unset in the config = leave ROS_DOMAIN_ID as the environment has it.
 DOMAIN=""
@@ -226,6 +235,31 @@ DOMAIN=""
 if [ -n "$DOMAIN" ]; then
   export ROS_DOMAIN_ID="$DOMAIN"
   log "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
+fi
+
+# --- 3b. Serial devices: warn only ---------------------------------------------
+# The nodes open the motor board and the lidar only by their udev symlinks, never a raw
+# /dev/ttyUSBn (plug order decides which board is ttyUSB0). This script can't sudo, so a Pi
+# without the rules (or with stale ones) only gets told what to run.
+stage "serial devices"
+UDEV_DIR="$REPO/deployment/udev"
+check_serial_link() {  # check_serial_link <symlink> <rules file> <board>
+  local link="/dev/$1" installed="/etc/udev/rules.d/$2"
+  if [ ! -f "$installed" ]; then
+    log "WARNING: $installed not installed, so $link never appears; run once: sudo $UDEV_DIR/install_udev.sh"
+  elif ! cmp -s "$UDEV_DIR/$2" "$installed"; then
+    log "WARNING: $installed differs from $UDEV_DIR/$2; re-run: sudo $UDEV_DIR/install_udev.sh"
+  elif [ -e "$link" ]; then
+    log "$link -> $(readlink -f "$link")"
+  else
+    log "WARNING: $link missing: is the $3 plugged in?"
+  fi
+}
+if [ "$SIM" = true ] && [ "$MODE" = autonomy ]; then
+  log "sim: /dev/motor and /dev/rplidar not needed"
+else
+  [ "$MODE" = autonomous ] || check_serial_link motor 99-motor.rules "motor-controller board"
+  check_serial_link rplidar 99-rplidar.rules "RPLidar C1"
 fi
 
 # --- 4. Launch -------------------------------------------------------------
@@ -238,7 +272,7 @@ log "source $WS/install/setup.bash exit=$?"
 run_logged command -v ros2
 stage "ROS launch"
 announce booting launching
-log "launching my_bringup master_launch.py mode:=$MODE sim:=$SIM robot_id:=$ROBOT_ID api_url:=$API_URL"
+log "launching my_bringup master_launch.py mode:=$MODE sim:=$SIM nav2:=$NAV2 robot_id:=$ROBOT_ID api_url:=$API_URL"
 log "handing off to ros2 after ${SECONDS}s; launch stdout/stderr continue in this log"
-exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "sim:=$SIM" "robot_id:=$ROBOT_ID" \
+exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "sim:=$SIM" "nav2:=$NAV2" "robot_id:=$ROBOT_ID" \
   ${API_URL:+"api_url:=$API_URL"}

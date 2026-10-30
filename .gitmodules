@@ -1,12 +1,10 @@
 [submodule "ros2_ws/src/delivery-autonomy"]
 	path = ros2_ws/src/delivery-autonomy
 	url = https://github.com/sebtheiler/delivery-autonomy.git
+	branch = dev
 [submodule "ros2_ws/src/sllidar_ros2"]
 	path = ros2_ws/src/sllidar_ros2
 	url = https://github.com/Slamtec/sllidar_ros2
 [submodule "ros2_ws/src/ublox_dgnss"]
 	path = ros2_ws/src/ublox_dgnss
-	url = https://github.com/aussierobots/ublox_dgnss.git
-[submodule "sim/src/serial"]
-	path = sim/src/serial
-	url = https://github.com/RoverRobotics-forks/serial-ros2.git
+	url = https://github.com/WUSTL-Delivery/ublox_dgnss.git
