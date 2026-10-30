@@ -4,7 +4,13 @@ For a stationary check:
     ros2 launch my_bringup scan_fusion.launch.py
 With odometry TF available:
     ros2 launch my_bringup scan_fusion.launch.py fixed_frame:=odom
-For bags/simulation, also pass use_sim_time:=true and remap sensor topics.
+For bags/simulation, also pass use_sim_time:=true and remap sensor topics, e.g. the
+Gazebo sim (lidar on /scan, no camera, so frames are lidar only):
+    ros2 launch my_bringup scan_fusion.launch.py lidar_topic:=/scan fixed_frame:=odom \
+        use_sim_time:=true
+master_launch.py starts this in mode:=autonomy with nav2:=true when the costmap reads
+/scan_fused (nav2_sources auto or fused). With one input missing it publishes the other
+one alone; with both missing it publishes nothing (config/scan_fusion.yaml input_timeout_s).
 """
 
 import os
