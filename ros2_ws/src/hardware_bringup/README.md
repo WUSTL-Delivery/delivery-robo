@@ -56,12 +56,13 @@ delivery-autonomy MPPI controller, see [Controller parameters](#controller-param
 
 ## delivery-autonomy version
 
-The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `551467a` of
+The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `43afae9` of
 delivery-autonomy's **`dev`** branch. That is our branch of the upstream code, made while its
 author is away. It adds the controller parameters below, the slow-down and stop for costmap
 obstacles, the taper into the path end, MPPI's costmap cost, the robot's geometry as controller
 parameters, the WGS84 GPS projection, and the
-sim fixes. `.gitmodules` says `branch = dev` for documentation only: `git submodule update` checks
+sim fixes. Since TDM-43 (43afae9) the controller also ends a goal at the end of the path: reached
+within `xy_goal_tolerance` at any heading, aborted beyond it, so it no longer drives on past the goal. `.gitmodules` says `branch = dev` for documentation only: `git submodule update` checks
 out the pinned commit, not the branch head. Move the pin with `git submodule update --remote`
 or `git update-index --cacheinfo 160000,<sha>,ros2_ws/src/delivery-autonomy`.
 
@@ -73,7 +74,7 @@ or `git update-index --cacheinfo 160000,<sha>,ros2_ws/src/delivery-autonomy`.
 `autonomy_real.launch.py` starts delivery-autonomy's controller (`controller_server`, the MPPI
 path follower behind `/follow_path`) with `config/hardware.yaml` as its parameter file. It does
 this with `sim:=true` too, so the sim drives with the robot's values, except for the vehicle model
-(below). The `controller_server` section sets only the three values that differ from the
+(below). The `controller_server` section sets only the five values that differ from the
 controller's defaults. The wheelbase and steering limit come from `/**`. `use_costmap` comes from
 the launch file's `nav2` argument. All but the two topics can be changed at runtime
 (`ros2 param set /controller_server ...`). The controller rejects a value outside the ranges below.
@@ -91,8 +92,8 @@ the launch file's `nav2` argument. All but the two topics can be changed at runt
 | `crawl_speed` | 0.3 | 0.3 | m/s cap while `use_costmap` is on but the costmap is missing or stale. A stale costmap still stops the robot for what it shows. |
 | `goal_decel` | 0.8 | 0.8 | m/s². Braking into the end of the path: speed ≤ √(2·decel·remaining). |
 | `goal_creep_speed` | 0.15 | 0.15 | m/s. The taper's floor, so the robot still reaches the end. |
-| `xy_goal_tolerance` | 0.25 | 0.25 | m (EKF). The path counts as done within this distance of its end... |
-| `yaw_goal_tolerance` | 0.15 | 0.15 | rad. ...and this heading error. |
+| `xy_goal_tolerance` | **0.5** | 0.25 | m (EKF). The goal is reached within this distance of the path's end (and within `yaw_goal_tolerance` of its heading). Since TDM-43 the controller also ends the goal when the robot reaches the end of the path: reached within this distance at any heading, aborted beyond it. 0.5 is local_planner's `goal_tolerance`, so both stop the robot at the same distance. On the Oct 24 Pi test (RTK float, IMU yaw bias) 0.25 m together with the heading check missed the goal and the robot drove on past it. Must be positive. |
+| `yaw_goal_tolerance` | **3.15** | 0.15 | rad. Heading error allowed at the goal; ≥ π (3.15) turns the heading check off. The robot delivers to a point and needs no heading there, and in the Oct 24 replay a heading miss (12.4° with RTK float) was what kept it from stopping. Must be positive. |
 | `wheelbase` | **0.36322** (`/**`) | 0.5 | m. MPPI's vehicle model, and the conversion of its steering angle into the yaw rate it sends. `arduino_bridge` converts back with the same `/**` value, so the robot steers the angle MPPI planned. The sim gets the Gazebo car's 0.5. |
 | `max_steer_rad` | **0.4363** (`/**`) | 0.6 | rad. MPPI samples steering within ±this, and the command is clipped to it. It is the bridge's own limit, so MPPI plans only turns the robot can make: 0.78 m radius at the tightest, where the sim car's 0.6 rad meant 0.73 m. The sim gets 0.6. Range (0, π/2). |
 | `steer_tau`, `drive_tau`, `max_accel` | defaults | 0.545, 0.01, 5.0 | s, s, m/s². The model's steering lag, speed lag and acceleration limit, fitted to the Gazebo car. Nobody has measured the robot's (see "Calibration"), so it keeps the sim's. Must be positive. |
