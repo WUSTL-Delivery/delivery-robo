@@ -12,7 +12,17 @@ delivery-autonomy itself is never edited:
   obstacles in Nav2's costmap only when Nav2 runs. Without a costmap it would otherwise crawl at
   crawl_speed (0.3 m/s) waiting for one;
 * global_planner runs with cwd = planner_cache_dir so its osmnx Overpass cache (./cache)
-  survives reboots; robot.service sets no WorkingDirectory.
+  survives reboots; robot.service sets no WorkingDirectory;
+* obstacle_guard (TDM-52, robot only) locks twist_mux's navigation input while neither the lidar
+  (/scan_filtered) nor the depth camera (/camera/scan) publishes: the user's rule is that the
+  robot drives on with one of them missing and stops driving autonomously with both missing
+  (the joystick still overrides). It runs here, beside the controller whose /cmd_vel_nav it
+  gates, so whatever starts the controller on the robot also starts the guard; twist_mux's lock
+  (config/twist_mux.yaml) blocks navigation whenever the guard is not running. lidar:=false or
+  realsense:=false in master_launch do not change its inputs: a sensor switched off counts as
+  missing, so both off means no autonomous driving. obstacle_guard:=false starts it disabled
+  (never locks, logs an error every 30 s) for bench work without sensors. Not with sim:=true:
+  the sim has no twist_mux.
 
 Needs drive.launch.py (or the whole master_launch mode:=autonomy) for /odom and motion, and
 the IMU + GPS drivers for sensor data.
@@ -128,7 +138,19 @@ def _nodes(context):
                     {**real_time, 'use_costmap': nav2, **(SIM_VEHICLE if sim else {})}],
         remappings=[] if sim else [('/cmd_vel', '/cmd_vel_nav')],
     )
-    return [datum, state_estimation, global_planner, controller]
+    nodes = [datum, state_estimation, global_planner, controller]
+    if not sim:
+        guard = LaunchConfiguration('obstacle_guard', default='true').perform(context) == 'true'
+        nodes.append(Node(
+            package='hardware_bringup',
+            executable='obstacle_guard',
+            name='obstacle_guard',
+            output='screen',
+            respawn=True,
+            respawn_delay=1.0,       # navigation stays blocked (lock timeout) until it is back
+            parameters=[{'enabled': guard}],
+        ))
+    return nodes
 
 
 def generate_launch_description():
@@ -155,5 +177,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'planner_cache_dir', default_value='~/.cache/delivery_autonomy',
             description='working directory of global_planner, holds its osmnx ./cache'),
+        DeclareLaunchArgument(
+            'obstacle_guard', default_value='true', choices=['true', 'false'],
+            description='robot only: block navigation in twist_mux while neither the lidar nor '
+                        'the depth camera publishes; false = run it disabled (bench work)'),
         OpaqueFunction(function=_nodes),
     ])

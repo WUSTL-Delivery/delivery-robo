@@ -79,7 +79,9 @@ checklist and the calibration procedure):
 |---|---|---|
 | `arduino_bridge` | hardware_bringup | only owner of the Arduino serial port: `/cmd_vel_out` → motor/servo, encoder → `/odom`, 0.5 s watchdog |
 | `joy_node` + `joy_to_cmdvel` | joy, hardware_bringup | joystick → `/cmd_vel_joy` while the enable button is held |
-| `twist_mux` | twist_mux (apt) | joystick (priority 100) over controller (10) → `/cmd_vel_out` |
+| `twist_mux` | twist_mux (apt) | joystick (priority 100) over controller (10) → `/cmd_vel_out`; lock `obstacle_sensors` (50) |
+| `obstacle_guard` | hardware_bringup | no lidar and no depth-camera scan for 1 s → locks twist_mux: the controller is blocked, the joystick still drives (TDM-52; one sensor missing keeps driving) |
+| `scan_fusion` | my_bringup | with `nav2: true`: `/scan_filtered` + `/camera/scan` → `/scan_fused` for the costmap; either sensor alone keeps it going |
 | `gps_datum_tf` | hardware_bringup | gates `/fix` → `/gps/fix`, publishes `map→odom` from the first fix |
 | `state_estimation`, `global_planning_server`, `controller_server` | autonomy (submodule) | the delivery-autonomy EKF, planner and MPPI controller with hardware parameters |
 | `imu_publisher`, ublox + NTRIP | imu_package, ublox_dgnss | as in `autonomous` |

@@ -7,6 +7,8 @@ Plan stage 1. Runs on its own for bench tests (wheels off the ground):
     ros2 topic echo /odom
 
 master_launch.py includes it in mode:=autonomy together with autonomy_real.launch.py.
+twist_mux's obstacle_sensors lock (config/twist_mux.yaml, TDM-52) blocks /cmd_vel_nav unless
+obstacle_guard (autonomy_real.launch.py) runs and sees a scan; the joystick is never blocked.
 """
 import os
 
