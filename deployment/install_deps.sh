@@ -11,6 +11,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 
 sudo apt-get update -qq
+# Bring every installed ROS package up to the current apt sync before rosdep adds new ones
+# (TDM-46). apt installs a new package from the current sync without upgrading the ROS core under
+# it, and the mix fails only at run time: nav2_msgs built against fastcdr 2.2.8 on top of fastcdr
+# 2.2.5 killed planner_server (exit 127, "symbol lookup error") on its first costmap publish.
+# Rebuild ros2_ws after this upgrades anything.
+mapfile -t ros_pkgs < <(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' "ros-$ROS_DISTRO-*" \
+                        2>/dev/null | awk '$1 == "ii" {print $2}')
+[ "${#ros_pkgs[@]}" -eq 0 ] || sudo apt-get install -y --only-upgrade "${ros_pkgs[@]}"
 sudo apt-get install -y --no-install-recommends python3-pip python3-rosdep
 
 python3 -m pip install --user --break-system-packages --require-hashes -r "$HERE/requirements.lock"

@@ -236,3 +236,56 @@ def test_tdm29_unwritable_params_file_starts_nothing(tmp_path, monkeypatch):
     map_yaml.write_text('image: boundary.png\n')
     actions = _tdm29_launch(map_yaml)
     assert len(actions) == 1 and isinstance(actions[0], LogInfo)
+
+
+def _tdm46_lib(tmp_path, source, name):
+    """Compile C `source` into tmp_path/lib/<name>; skips without a C compiler."""
+    import shutil
+    import subprocess
+
+    cc = shutil.which('cc') or shutil.which('gcc')
+    if cc is None:
+        pytest.skip('no C compiler')
+    lib_dir = tmp_path / 'lib'
+    lib_dir.mkdir(exist_ok=True)
+    src = tmp_path / (name + '.c')
+    src.write_text(source)
+    subprocess.run([cc, '-shared', '-fPIC', '-o', str(lib_dir / name), str(src)], check=True)
+    return lib_dir / name
+
+
+def test_tdm46_typesupport_with_an_unbound_symbol_is_found(tmp_path, monkeypatch):
+    # The Pi's nav2_msgs typesupport: loads lazily, but calls a fastcdr function that is not there
+    _tdm46_lib(tmp_path, 'void gone(void);\nvoid serialize(void) { gone(); }\n',
+               'libfake_msgs__rosidl_typesupport_fastrtps_cpp.so')
+    _tdm46_lib(tmp_path, 'int ok(void) { return 1; }\n',
+               'libfake_msgs__rosidl_typesupport_introspection_cpp.so')
+    _tdm46_lib(tmp_path, 'void gone(void);\nvoid f(void) { gone(); }\n',
+               'libfake_msgs__rosidl_generator_py.so')   # not typesupport: not checked
+    monkeypatch.setattr(nav2_local, 'get_package_prefix',
+                        lambda pkg: str(tmp_path) if pkg == 'fake_msgs' else '/nonexistent')
+    broken = nav2_local.broken_typesupport(('fake_msgs',))
+    assert [os.path.basename(lib) for lib, _ in broken] == [
+        'libfake_msgs__rosidl_typesupport_fastrtps_cpp.so']
+    assert 'gone' in broken[0][1]
+
+
+def test_tdm46_missing_interface_package_is_not_broken(monkeypatch):
+    def not_found(pkg):
+        raise nav2_local.PackageNotFoundError(pkg)
+
+    monkeypatch.setattr(nav2_local, 'get_package_prefix', not_found)
+    assert nav2_local.broken_typesupport() == []
+
+
+def test_tdm46_broken_typesupport_starts_nothing(tmp_path, monkeypatch):
+    from launch.actions import LogInfo
+
+    monkeypatch.setenv('ROS_HOME', str(tmp_path / 'ros_home'))
+    monkeypatch.setattr(nav2_local, 'broken_typesupport', lambda: [
+        ('/opt/ros/jazzy/lib/libnav2_msgs__rosidl_typesupport_fastrtps_cpp.so',
+         'undefined symbol: _ZN8eprosima7fastcdr3Cdr9serializeEj')])
+    map_yaml = tmp_path / 'boundary.yaml'
+    map_yaml.write_text('image: boundary.png\n')
+    actions = _tdm29_launch(map_yaml)
+    assert len(actions) == 1 and isinstance(actions[0], LogInfo)
