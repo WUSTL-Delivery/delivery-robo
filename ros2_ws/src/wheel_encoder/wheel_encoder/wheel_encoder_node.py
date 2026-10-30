@@ -43,6 +43,7 @@ class WheelEncoderNode(Node):
             except ValueError:
                 pass
             msg = String()
+            msg.data = line
             self.publisher_.publish(msg)
         else:
             msg = String()
