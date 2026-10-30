@@ -27,6 +27,21 @@ sources:=
   separate  /scan_filtered and /camera/scan both mark and clear.
   lidar     one LaserScan (scan_topic) marks and clears. Default with sim:=true (/scan).
 
+A missing sensor (TDM-52, the user's rule): with one of lidar / camera missing the robot keeps
+planning and driving on the other; with both missing it stops. The costmap is "current" (and
+planner_server plans) only while every source that keeps its expected_update_rate publishes,
+so only one source per mode keeps it ("gates"):
+  fused     /scan_fused gates. my_bringup scan_fusion publishes it while either sensor is live
+            (camera only when the lidar is missing), so it stops only when both are. The two
+            clearing-only sources get expected_update_rate 0.
+  separate  nothing in the costmap gates (both 0): one sensor alone keeps marking and clearing.
+            Both missing is caught by local_planner, which watches every source topic
+            (scan_topics) and stops when none of them publishes.
+  lidar     the lidar gates: it is the only sensor this mode uses.
+local_planner gets the source topics as scan_topics and logs the silent ones with every planning
+failure. On the robot hardware_bringup obstacle_guard also stops the robot through twist_mux
+when both sensors are silent, whatever sends the goals.
+
 The params file is patched with PyYAML and written to $ROS_HOME/nav2_local_params_domain<N>.yaml
 (default ~/.ros, N = ROS_DOMAIN_ID), because launch_ros dict parameters on planner_server never
 reach its costmap sub-node (/global_costmap/global_costmap). Every launch on that domain rewrites
@@ -56,11 +71,14 @@ from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-# obstacle_layer source name (a key in nav2_local.yaml) -> (marking, clearing), per sources:=
+# obstacle_layer source (a key in nav2_local.yaml) -> (marking, clearing, gates), per sources:=
+# gates: the source keeps its expected_update_rate, so the costmap goes stale (planning stops)
+# when it is silent; any other source gets 0 (see "A missing sensor" above).
 SOURCE_MODES = {
-    'fused': {'fused': (True, False), 'lidar': (False, True), 'camera': (False, True)},
-    'separate': {'lidar': (True, True), 'camera': (True, True)},
-    'lidar': {'lidar': (True, True)},
+    'fused': {'fused': (True, False, True), 'lidar': (False, True, False),
+              'camera': (False, True, False)},
+    'separate': {'lidar': (True, True, False), 'camera': (True, True, False)},
+    'lidar': {'lidar': (True, True, True)},
 }
 STANDALONE_COSTMAP = 'global_costmap/global_costmap'
 MANAGER = 'lifecycle_manager_nav2_local'
@@ -137,9 +155,11 @@ def patch_params(params, *, map_yaml, sources, scan_topic='', sim=False, planner
 
     obstacle = params['global_costmap']['global_costmap']['ros__parameters']['obstacle_layer']
     obstacle['observation_sources'] = ' '.join(modes)
-    for name, (marking, clearing) in modes.items():
+    for name, (marking, clearing, gates) in modes.items():
         obstacle[name]['marking'] = marking
         obstacle[name]['clearing'] = clearing
+        if not gates:
+            obstacle[name]['expected_update_rate'] = 0.0
     lidar_topic = scan_topic or ('/scan' if sim else '')
     if lidar_topic:
         obstacle['lidar']['topic'] = lidar_topic
@@ -187,11 +207,22 @@ def write_params(params, path):
         raise
 
 
+def scan_topics(params):
+    """Return the topic of every obstacle_layer source in a (patched) params tree, in order."""
+    costmap = params.get('global_costmap', {}).get('global_costmap', {})
+    obstacle = costmap.get('ros__parameters', {}).get('obstacle_layer', {})
+    return [obstacle[name]['topic'] for name in obstacle.get('observation_sources', '').split()]
+
+
 def local_planner_params(params, *, sim=False, drive=False):
-    """local_planner's parameters: sim time, drive, and the planner_id planner_server serves."""
+    """local_planner's parameters: sim time, drive, the planner_id, the costmap's scan topics."""
     planner = params.get('planner_server', {}).get('ros__parameters', {})
     plugins = planner.get('planner_plugins') or ['GridBased']   # Nav2's own default
-    return {'use_sim_time': sim, 'drive': drive, 'planner_id': plugins[0]}
+    result = {'use_sim_time': sim, 'drive': drive, 'planner_id': plugins[0]}
+    topics = scan_topics(params)
+    if topics:   # an empty list would reach the node without a type
+        result['scan_topics'] = topics
+    return result
 
 
 def _local_planner_missing():
@@ -211,7 +242,9 @@ def _local_planner_missing():
 
 
 def _role(source):
-    return '+'.join(r for r, on in (('mark', source['marking']), ('clear', source['clearing'])) if on)
+    role = '+'.join(r for r, on in (('mark', source['marking']),
+                                    ('clear', source['clearing'])) if on)
+    return role + (', gates' if source.get('expected_update_rate', 0.0) > 0.0 else '')
 
 
 def _launch_setup(context):
@@ -260,9 +293,16 @@ def _launch_setup(context):
     wiring = ', '.join(f"{obstacle[n]['topic']} ({_role(obstacle[n])})"
                        for n in obstacle['observation_sources'].split())
     actions = [LogInfo(msg=f'[nav2_local] map {map_yaml}; scans: {wiring}; params {patched}')]
-    if sim and sources in ('fused', 'separate'):
-        actions.append(LogInfo(msg=f'[nav2_local] WARNING: sources:={sources} with sim:=true, but the '
-                                   'sim publishes only /scan; the costmap will go stale'))
+    if sim and sources == 'fused':
+        actions.append(LogInfo(msg=('[nav2_local] sources:=fused with sim:=true: run my_bringup '
+                                    'scan_fusion.launch.py lidar_topic:=/scan fixed_frame:=odom '
+                                    'use_sim_time:=true (master_launch does); without /scan_fused '
+                                    'the costmap goes stale. The sim has no camera: /camera/scan '
+                                    'stays missing')))
+    elif sim and sources == 'separate':
+        actions.append(LogInfo(msg=('[nav2_local] sources:=separate with sim:=true: the sim has no '
+                                    'camera, so /camera/scan stays missing and the lidar works '
+                                    'alone')))
 
     actions.append(Node(
         package='nav2_map_server',

@@ -164,9 +164,17 @@ global_costmap:
         #   separate : lidar and camera both mark and clear
         #   lidar    : lidar marks and clears (default with sim:=true, on /scan)
         observation_sources: fused lidar camera
-        # expected_update_rate on every source is the longest gap (s) between
-        # messages before the costmap reports itself not current; planner_server
-        # then refuses to plan, so a dead sensor stops the robot.
+        # expected_update_rate is the longest gap (s) between a source's messages
+        # before the costmap reports itself not current; planner_server then
+        # refuses to plan (PlannerTimedOut) and local_planner stops the robot.
+        # TDM-52, the user's rule: one of lidar / camera missing -> keep going on
+        # the other; both missing -> stop. So the launch keeps the rate on one
+        # source per mode only and sets the others to 0 (never stale):
+        #   fused    : fused keeps 1.0 (scan_fusion publishes it while either
+        #              sensor is live); lidar and camera 0
+        #   separate : lidar and camera 0 (local_planner stops when both are silent)
+        #   lidar    : lidar keeps 0.5
+        # The values below are what a source gets when it gates.
 
         # my_bringup scan_fusion: lidar + camera obstacle endpoints in one
         # LaserScan (base_link, 360 bins, range_max 12). Missing bins are NaN,

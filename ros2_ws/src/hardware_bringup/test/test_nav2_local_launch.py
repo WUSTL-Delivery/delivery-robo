@@ -54,20 +54,54 @@ def test_every_source_goes_stale(tdm21_params):
         assert obstacle[name]['expected_update_rate'] > 0.0, name
 
 
+# (marking, clearing, expected_update_rate): TDM-52, one source per mode gates "current"
 @pytest.mark.parametrize('sources, expected', [
-    ('fused', {'fused': (True, False), 'lidar': (False, True), 'camera': (False, True)}),
-    ('separate', {'lidar': (True, True), 'camera': (True, True)}),
-    ('lidar', {'lidar': (True, True)}),
-    ('auto', {'fused': (True, False), 'lidar': (False, True), 'camera': (False, True)}),
+    ('fused', {'fused': (True, False, 1.0), 'lidar': (False, True, 0.0),
+               'camera': (False, True, 0.0)}),
+    ('separate', {'lidar': (True, True, 0.0), 'camera': (True, True, 0.0)}),
+    ('lidar', {'lidar': (True, True, 0.5)}),
+    ('auto', {'fused': (True, False, 1.0), 'lidar': (False, True, 0.0),
+              'camera': (False, True, 0.0)}),
 ])
 def test_sources_wiring(tdm21_params, sources, expected):
     patched = nav2_local.patch_params(tdm21_params, map_yaml=MAP, sources=sources)
     obstacle = _costmap(patched)['obstacle_layer']
     assert obstacle['observation_sources'].split() == list(expected)
-    for name, (marking, clearing) in expected.items():
+    for name, (marking, clearing, rate) in expected.items():
         assert (obstacle[name]['marking'], obstacle[name]['clearing']) == (marking, clearing)
+        assert obstacle[name]['expected_update_rate'] == rate, name
     assert obstacle['lidar']['topic'] == '/scan_filtered'
     assert patched['map_server']['ros__parameters']['yaml_filename'] == MAP
+    # the input tree keeps every source's rate
+    assert _costmap(tdm21_params)['obstacle_layer']['camera']['expected_update_rate'] == 1.0
+
+
+@pytest.mark.parametrize('sources', ['fused', 'separate', 'lidar', 'auto'])
+def test_tdm52_a_lone_raw_sensor_never_gates_when_there_are_two(tdm21_params, sources):
+    # The user's rule: one of lidar / camera missing -> keep planning on the other.
+    obstacle = _costmap(nav2_local.patch_params(
+        tdm21_params, map_yaml=MAP, sources=sources))['obstacle_layer']
+    names = obstacle['observation_sources'].split()
+    gating = [n for n in names if obstacle[n]['expected_update_rate'] > 0.0]
+    if {'lidar', 'camera'} <= set(names):
+        assert 'lidar' not in gating and 'camera' not in gating
+    # at most one gate, and it is the only obstacle input that must be there
+    assert gating in ([], ['fused'], ['lidar'])
+    assert gating or sources == 'separate'   # separate: local_planner stops on all-silent
+
+
+@pytest.mark.parametrize('sources, sim, topics', [
+    ('fused', False, ['/scan_fused', '/scan_filtered', '/camera/scan']),
+    ('auto', False, ['/scan_fused', '/scan_filtered', '/camera/scan']),
+    ('separate', False, ['/scan_filtered', '/camera/scan']),
+    ('lidar', False, ['/scan_filtered']),
+    ('auto', True, ['/scan']),
+    ('fused', True, ['/scan_fused', '/scan', '/camera/scan']),
+])
+def test_tdm52_local_planner_watches_the_costmap_scan_topics(tdm21_params, sources, sim, topics):
+    patched = nav2_local.patch_params(tdm21_params, map_yaml=MAP, sources=sources, sim=sim)
+    assert nav2_local.scan_topics(patched) == topics
+    assert nav2_local.local_planner_params(patched, sim=sim)['scan_topics'] == topics
 
 
 def test_sim_means_sim_time_and_lidar_on_scan(tdm21_params):
