@@ -1,5 +1,8 @@
 # hardware_bringup
 
+For repeatable hand-turned encoder measurements and a motor-free gamepad preview,
+see [Encoder and gamepad testing](ENCODER_TESTING.md).
+
 Glue between the real robot and the `delivery-autonomy` stack (checked out as the submodule
 `ros2_ws/src/delivery-autonomy`, pinned to our `dev` branch, see
 [delivery-autonomy version](#delivery-autonomy-version); nothing here edits it). It implements
