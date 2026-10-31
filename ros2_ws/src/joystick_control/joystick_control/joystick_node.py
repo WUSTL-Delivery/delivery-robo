@@ -99,7 +99,8 @@ class JoystickNode(Node):
             throttle = msg.axes[1]
 
             # Original C++ node also reads a button, though it doesn't use it.
-            # Button 9 is typically "Start" or "Options" on many controllers, but it's labeled "A" in the comment.
+            # Button 9 is typically "Start" or "Options" on many controllers, but it's labeled "A"
+            # in the comment.
             if len(msg.buttons) > 9:
                 a_button = msg.buttons[9]  # noqa: F841
 

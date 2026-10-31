@@ -40,7 +40,7 @@ import math
 
 DEFAULT_SPACING = 0.5
 DUPLICATE_DISTANCE = 0.01  # m; consecutive path poses closer than this are one pose
-FINAL_APPROACH_HYSTERESIS = 0.5  # m; how far past final_approach_distance before replanning resumes
+FINAL_APPROACH_HYSTERESIS = 0.5  # m; margin past final_approach_distance before replanning resumes
 
 
 def resample(points, spacing=DEFAULT_SPACING):

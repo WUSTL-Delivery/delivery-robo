@@ -66,10 +66,11 @@ NTRIP_BOOL_KEYS = ('use_https', 'send_gga')
 
 
 def _repo_root():
-    """robotics/ checkout: $REPO, else derived from this file (symlink-install), else ~/delivery-robo."""
+    """Return the repo checkout: $REPO, else derived from this file, else ~/delivery-robo."""
     candidates = [os.environ.get('REPO')]
     here = os.path.dirname(os.path.realpath(__file__))
-    candidates.append(os.path.abspath(os.path.join(here, '..', '..', '..', '..')))  # launch/ -> my_bringup -> src -> ros2_ws -> repo
+    # launch/ -> my_bringup -> src -> ros2_ws -> repo (symlink-install)
+    candidates.append(os.path.abspath(os.path.join(here, '..', '..', '..', '..')))
     candidates.append(os.path.expanduser('~/delivery-robo'))
     for c in candidates:
         if c and os.path.isfile(os.path.join(c, 'deployment', 'robot_config.yaml')):
@@ -88,13 +89,15 @@ def _ntrip_settings():
                 override = yaml.safe_load(f) or {}
             for key in settings:
                 if key in override and override[key] is not None:
-                    settings[key] = str(override[key]).lower() if key in NTRIP_BOOL_KEYS else str(override[key])
+                    settings[key] = (str(override[key]).lower() if key in NTRIP_BOOL_KEYS
+                                     else str(override[key]))
             print(f'[master_launch] NTRIP settings from {path}')
         except Exception as exc:  # noqa: BLE001 - a bad override must not brick the boot
-            print(f'[master_launch] WARNING: could not read {path} ({exc}); using committed NTRIP defaults')
+            print(f'[master_launch] WARNING: could not read {path} ({exc}); '
+                  'using committed NTRIP defaults')
     else:
-        print('[master_launch] NTRIP: no deployment/ntrip.local.yaml, using the committed defaults '
-              '(rotate the caster password and put the new one in that file)')
+        print('[master_launch] NTRIP: no deployment/ntrip.local.yaml, using the committed '
+              'defaults (rotate the caster password and put the new one in that file)')
     return settings
 
 
@@ -152,7 +155,8 @@ def generate_launch_description():
        'mode',
        default_value='teleop',
        choices=['teleop', 'autonomous', 'autonomy'],
-       description='teleop = wired joystick control; autonomous = sensor stack only (GPS/NTRIP/IMU); '
+       description='teleop = wired joystick control; '
+                   'autonomous = sensor stack only (GPS/NTRIP/IMU); '
                    'autonomy = sensors + drive bridge + delivery-autonomy with joystick override',
     )
     sim = LaunchConfiguration('sim')
@@ -160,25 +164,27 @@ def generate_launch_description():
        'sim',
        default_value='false',
        choices=['true', 'false'],
-       description='autonomy mode only: the delivery-autonomy Gazebo sim replaces the sensors and the '
-                   'drive chain (laptop testing inside its nix develop shell; never on the robot)',
+       description='autonomy mode only: the delivery-autonomy Gazebo sim replaces the sensors '
+                   'and the drive chain (laptop testing inside its nix develop shell; '
+                   'never on the robot)',
     )
     nav2 = LaunchConfiguration('nav2')
     nav2_arg = DeclareLaunchArgument(
        'nav2',
        default_value='false',
        choices=['true', 'false'],
-       description='autonomy mode only: Nav2 local planning (boundary-map costmap + Hybrid-A* planner_server '
-                   '+ local_planner driving the MPPI via /follow_path); goals on /goal_pose or /nav/goal_node',
+       description='autonomy mode only: Nav2 local planning (boundary-map costmap + Hybrid-A* '
+                   'planner_server + local_planner driving the MPPI via /follow_path); '
+                   'goals on /goal_pose or /nav/goal_node',
     )
     nav2_sources = LaunchConfiguration('nav2_sources')
     nav2_sources_arg = DeclareLaunchArgument(
        'nav2_sources',
        default_value='auto',
        choices=['auto', 'fused', 'separate', 'lidar'],
-       description='with nav2:=true: costmap scan inputs (nav2_local.launch.py sources:=); auto = lidar '
-                   '(/scan) with sim:=true, else fused (/scan_fused; auto and fused start '
-                   'my_bringup scan_fusion)',
+       description='with nav2:=true: costmap scan inputs (nav2_local.launch.py sources:=); '
+                   'auto = lidar (/scan) with sim:=true, else fused (/scan_fused; auto and '
+                   'fused start my_bringup scan_fusion)',
     )
     robot_id = LaunchConfiguration('robot_id')
     api_url = LaunchConfiguration('api_url')
@@ -193,23 +199,29 @@ def generate_launch_description():
     lidar = LaunchConfiguration('lidar')
     lidar_arg = DeclareLaunchArgument(
        'lidar', default_value='true', choices=['true', 'false'],
-       description='every mode except sim: run the RPLidar C1 driver (/scan), hot-plug watchdog and /scan_filtered',
+       description='every mode except sim: run the RPLidar C1 driver (/scan), '
+                   'hot-plug watchdog and /scan_filtered',
     )
     realsense = LaunchConfiguration('realsense')
     realsense_arg = DeclareLaunchArgument(
        'realsense', default_value='true', choices=['true', 'false'],
-       description='every mode except sim: run the Intel RealSense depth camera driver (/camera/color, /camera/depth)',
+       description='every mode except sim: run the Intel RealSense depth camera driver '
+                   '(/camera/color, /camera/depth)',
     )
     is_teleop = IfCondition(PythonExpression(["'", mode, "' == 'teleop'"]))
     # sensors run in both non-teleop modes, except when the sim stands in for them
     is_sensors = IfCondition(PythonExpression(
        ["'", mode, "' == 'autonomous' or ('", mode, "' == 'autonomy' and '", sim, "' != 'true')"]))
     is_autonomy = IfCondition(PythonExpression(["'", mode, "' == 'autonomy'"]))
-    is_autonomy_real = IfCondition(PythonExpression(["'", mode, "' == 'autonomy' and '", sim, "' != 'true'"]))
-    is_autonomy_sim = IfCondition(PythonExpression(["'", mode, "' == 'autonomy' and '", sim, "' == 'true'"]))
-    is_nav2 = IfCondition(PythonExpression(["'", mode, "' == 'autonomy' and '", nav2, "' == 'true'"]))
+    is_autonomy_real = IfCondition(PythonExpression(
+       ["'", mode, "' == 'autonomy' and '", sim, "' != 'true'"]))
+    is_autonomy_sim = IfCondition(PythonExpression(
+       ["'", mode, "' == 'autonomy' and '", sim, "' == 'true'"]))
+    is_nav2 = IfCondition(PythonExpression(
+       ["'", mode, "' == 'autonomy' and '", nav2, "' == 'true'"]))
     # the robot's own model and lidar, i.e. everything except autonomy + sim (Gazebo provides both)
-    not_sim = IfCondition(PythonExpression(["not ('", mode, "' == 'autonomy' and '", sim, "' == 'true')"]))
+    not_sim = IfCondition(PythonExpression(
+       ["not ('", mode, "' == 'autonomy' and '", sim, "' == 'true')"]))
 
     # --- heartbeat: both modes, reports status to robo-web ----------------
     # Guard: with --symlink-install this launch file is the *new* one even when
@@ -217,12 +229,14 @@ def generate_launch_description():
     # is missing aborts the whole launch, so only add it if it was built.
     try:
         from ament_index_python.packages import get_package_prefix
-        _hb_exe = os.path.join(get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'heartbeat_node')
+        _hb_exe = os.path.join(
+            get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'heartbeat_node')
         heartbeat_available = os.path.exists(_hb_exe)
     except Exception:  # noqa: BLE001
         heartbeat_available = False
     if not heartbeat_available:
-        print('[master_launch] heartbeat_node executable not found (stale build?); skipping status heartbeat')
+        print('[master_launch] heartbeat_node executable not found (stale build?); '
+              'skipping status heartbeat')
 
     heartbeat_node = Node(
        package='my_bringup',
@@ -281,7 +295,8 @@ def generate_launch_description():
         ublox_dir = get_package_share_directory('ublox_dgnss')
     except PackageNotFoundError:
         ublox_dir = None
-        print('[master_launch] ublox_dgnss not found; autonomous/autonomy modes have no GPS/NTRIP nodes')
+        print('[master_launch] ublox_dgnss not found; '
+              'autonomous/autonomy modes have no GPS/NTRIP nodes')
 
     gps_main_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -319,7 +334,8 @@ def generate_launch_description():
         hw_dir = get_package_share_directory('hardware_bringup')
     except PackageNotFoundError:
         hw_dir = None
-        print('[master_launch] hardware_bringup not found; autonomy mode has no drive chain or autonomy nodes')
+        print('[master_launch] hardware_bringup not found; '
+              'autonomy mode has no drive chain or autonomy nodes')
     if hw_dir is not None:
         autonomy_nodes.append(IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(hw_dir, 'launch', 'drive.launch.py')),
@@ -328,15 +344,17 @@ def generate_launch_description():
         try:
             get_package_share_directory('autonomy')
             autonomy_nodes.append(IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(os.path.join(hw_dir, 'launch', 'autonomy_real.launch.py')),
+                PythonLaunchDescriptionSource(
+                    os.path.join(hw_dir, 'launch', 'autonomy_real.launch.py')),
                 # nav2: the controller slows and stops for the costmap only when Nav2 publishes one
                 launch_arguments={'sim': sim, 'nav2': nav2,
                                   'obstacle_guard': LaunchConfiguration('obstacle_guard')}.items(),
                 condition=is_autonomy,
             ))
         except PackageNotFoundError:
-            print('[master_launch] autonomy package not found (submodule ros2_ws/src/delivery-autonomy not '
-                  'checked out or not built); autonomy mode is joystick-through-bridge only')
+            print('[master_launch] autonomy package not found (submodule '
+                  'ros2_ws/src/delivery-autonomy not checked out or not built); '
+                  'autonomy mode is joystick-through-bridge only')
 
     # --- Nav2 local planning (autonomy + nav2:=true) ------------------------------
     # nav2_local.launch.py guards itself: missing Nav2 packages (the Lyrical sim shell has none),
@@ -354,8 +372,8 @@ def generate_launch_description():
         ))
     else:
         nav2_actions.append(LogInfo(
-           msg='[master_launch] WARNING: hardware_bringup nav2_local.launch.py not installed (rebuild '
-               'hardware_bringup); nav2:=true has no Nav2',
+           msg='[master_launch] WARNING: hardware_bringup nav2_local.launch.py not installed '
+               '(rebuild hardware_bringup); nav2:=true has no Nav2',
            condition=is_nav2,
         ))
 
@@ -365,24 +383,28 @@ def generate_launch_description():
     # publisher, ground truth and RViz. HEADLESS=1 in the environment hides the Gazebo window.
     sim_nodes = []
     repo = _repo_root()
-    sim_script = os.path.join(repo or '', 'ros2_ws', 'src', 'delivery-autonomy', 'src', 'simulation',
-                              'scripts', 'run_simulator.sh')
+    sim_script = os.path.join(repo or '', 'ros2_ws', 'src', 'delivery-autonomy', 'src',
+                              'simulation', 'scripts', 'run_simulator.sh')
     try:
         sim_dir = get_package_share_directory('simulation')
     except PackageNotFoundError:
         sim_dir = None
     if sim_dir is None or not os.path.isfile(sim_script):
-        # the robot never builds the simulation package, so only complain when the sim was asked for
+        # the robot never builds the simulation package, so only complain when the sim was
+        # asked for
         sim_nodes.append(LogInfo(
-           msg='[master_launch] WARNING: simulation package or run_simulator.sh not found; sim:=true has no '
-               'sim (startup.sh builds the simulation package only with sim: true)',
+           msg='[master_launch] WARNING: simulation package or run_simulator.sh not found; '
+               'sim:=true has no sim (startup.sh builds the simulation package only with '
+               'sim: true)',
            condition=is_autonomy_sim,
         ))
     else:
         sim_nodes += [
-           ExecuteProcess(cmd=['bash', sim_script], name='gazebo', output='screen', condition=is_autonomy_sim),
+           ExecuteProcess(cmd=['bash', sim_script], name='gazebo', output='screen',
+                          condition=is_autonomy_sim),
            IncludeLaunchDescription(
-              PythonLaunchDescriptionSource(os.path.join(sim_dir, 'launch', 'simulation.launch.py')),
+              PythonLaunchDescriptionSource(
+                 os.path.join(sim_dir, 'launch', 'simulation.launch.py')),
               condition=is_autonomy_sim,
            ),
         ]
@@ -425,7 +447,8 @@ def generate_launch_description():
     # Same stale-build guard as heartbeat_node above.
     try:
         from ament_index_python.packages import get_package_prefix
-        _wd_exe = os.path.join(get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'lidar_watchdog')
+        _wd_exe = os.path.join(
+            get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'lidar_watchdog')
         watchdog_available = os.path.exists(_wd_exe)
     except Exception:  # noqa: BLE001
         watchdog_available = False
@@ -446,7 +469,8 @@ def generate_launch_description():
         if watchdog_available:
             lidar_nodes += [lidar_watchdog]
         else:
-            print('[master_launch] lidar_watchdog executable not found (stale build?); lidar will not recover from a mid-run unplug')
+            print('[master_launch] lidar_watchdog executable not found (stale build?); '
+                  'lidar will not recover from a mid-run unplug')
 
     # --- lidar self-hit filter: /scan -> /scan_filtered (TDM-16) -----------
     # Needs: sudo apt install ros-jazzy-laser-filters
@@ -483,7 +507,8 @@ def generate_launch_description():
     # so launch still works where the driver isn't installed. Off with sim:=true
     # (the Gazebo robot has its own camera topics).
     use_realsense = IfCondition(PythonExpression(
-       ["'", realsense, "' == 'true' and not ('", mode, "' == 'autonomy' and '", sim, "' == 'true')"]))
+       ["'", realsense, "' == 'true' and not ('", mode, "' == 'autonomy' and '", sim,
+        "' == 'true')"]))
     realsense_nodes = []
     try:
         get_package_share_directory('realsense2_camera')
@@ -509,7 +534,8 @@ def generate_launch_description():
     # stale-build guard as heartbeat_node; it idles until depth + TF arrive.
     try:
         from ament_index_python.packages import get_package_prefix
-        _do_exe = os.path.join(get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'depth_obstacles')
+        _do_exe = os.path.join(
+            get_package_prefix('my_bringup'), 'lib', 'my_bringup', 'depth_obstacles')
         depth_obstacles_available = os.path.exists(_do_exe)
     except Exception:  # noqa: BLE001
         depth_obstacles_available = False

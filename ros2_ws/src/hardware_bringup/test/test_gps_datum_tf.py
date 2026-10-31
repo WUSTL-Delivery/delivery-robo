@@ -1,4 +1,8 @@
-"""gps_datum_tf's datum maths: UTM on the robot, local ENU about the Gazebo world origin in the sim."""
+"""
+gps_datum_tf's datum maths.
+
+UTM on the robot, local ENU about the Gazebo world origin in the sim.
+"""
 import math
 
 import pytest
@@ -25,12 +29,14 @@ N0 = WGS84_A / math.sqrt(1.0 - E2 * math.sin(PHI0) ** 2)
 
 
 def test_origin_is_zero():
-    assert geodetic_to_enu(*WORLD_ORIGIN, *WORLD_ORIGIN) == pytest.approx((0.0, 0.0, 0.0), abs=1e-6)
+    assert geodetic_to_enu(*WORLD_ORIGIN, *WORLD_ORIGIN) == pytest.approx(
+        (0.0, 0.0, 0.0), abs=1e-6)
 
 
 def test_straight_up_is_up():
     lat, lon, alt = WORLD_ORIGIN
-    assert geodetic_to_enu(lat, lon, alt + 10.0, *WORLD_ORIGIN) == pytest.approx((0.0, 0.0, 10.0), abs=1e-6)
+    assert geodetic_to_enu(lat, lon, alt + 10.0, *WORLD_ORIGIN) == pytest.approx(
+        (0.0, 0.0, 10.0), abs=1e-6)
 
 
 @pytest.mark.parametrize('de,dn', [(-95.0, 25.5), (100.0, 0.0), (0.0, -100.0), (-250.0, -120.0)])

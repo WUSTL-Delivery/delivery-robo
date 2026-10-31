@@ -23,8 +23,10 @@ def generate_launch_description():
                  'output_topic': '/encoder_test/cmd_vel_preview',
                  'max_speed': .2,
                  'require_enable_button': True, 'require_joystick': True,
-                 'enable_button': ParameterValue(LaunchConfiguration('enable_button'), value_type=int),
-                 'axis_throttle': ParameterValue(LaunchConfiguration('axis_throttle'), value_type=int),
+                 'enable_button': ParameterValue(
+                     LaunchConfiguration('enable_button'), value_type=int),
+                 'axis_throttle': ParameterValue(
+                     LaunchConfiguration('axis_throttle'), value_type=int),
                  'axis_steer': ParameterValue(LaunchConfiguration('axis_steer'), value_type=int),
              }]),
     ])

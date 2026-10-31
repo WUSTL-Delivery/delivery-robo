@@ -161,20 +161,21 @@ def generate_launch_description():
             'hardware_params', default_value=os.path.join(share, 'config', 'hardware.yaml')),
         DeclareLaunchArgument(
             'gps_in_topic', default_value='',
-            description='NavSatFix topic published by the GPS driver; overrides hardware.yaml when set '
-                        "(empty with sim:=true = the Gazebo bridge's /gps/fix)"),
+            description='NavSatFix topic published by the GPS driver; overrides hardware.yaml '
+                        "when set (empty with sim:=true = the Gazebo bridge's /gps/fix)"),
         DeclareLaunchArgument(
             'ekf_cmd_vel_topic', default_value='',
-            description="state_estimation's prediction input; empty = /cmd_vel_executed (/cmd_vel with "
-                        "sim:=true). /cmd_vel_out to use twist_mux's output instead"),
+            description="state_estimation's prediction input; empty = /cmd_vel_executed "
+                        "(/cmd_vel with sim:=true). /cmd_vel_out to use twist_mux's output "
+                        'instead'),
         DeclareLaunchArgument(
             'sim', default_value='false', choices=['true', 'false'],
             description='run against the delivery-autonomy Gazebo sim instead of the robot'),
         DeclareLaunchArgument(
             'nav2', default_value='false', choices=['true', 'false'],
-            description='Nav2 runs and publishes /global_costmap/costmap (master_launch passes its own '
-                        "nav2). Sets the controller's use_costmap: slow down and stop for costmap "
-                        'obstacles. false = the controller ignores the costmap'),
+            description='Nav2 runs and publishes /global_costmap/costmap (master_launch passes '
+                        "its own nav2). Sets the controller's use_costmap: slow down and stop "
+                        'for costmap obstacles. false = the controller ignores the costmap'),
         DeclareLaunchArgument(
             'planner_cache_dir', default_value='~/.cache/delivery_autonomy',
             description='working directory of global_planner, holds its osmnx ./cache'),

@@ -65,7 +65,8 @@ class LidarWatchdog(Node):
         self.first_seen = {}   # pid -> monotonic time the watchdog first saw it
         self.signaled = {}     # pid -> monotonic time SIGINT was sent
 
-        self.create_subscription(LaserScan, self.scan_topic, self._on_scan, qos_profile_sensor_data)
+        self.create_subscription(
+            LaserScan, self.scan_topic, self._on_scan, qos_profile_sensor_data)
         self.create_timer(period, self._check)
         self.get_logger().info(
             f'watching {self.scan_topic}; restarting {self.process_name} '
@@ -85,7 +86,8 @@ class LidarWatchdog(Node):
             self.first_seen.setdefault(pid, now)
             if pid in self.signaled:
                 if now - self.signaled[pid] > self.kill_grace:
-                    self.get_logger().warn(f'{self.process_name} [{pid}] ignored SIGINT; sending SIGKILL')
+                    self.get_logger().warn(
+                        f'{self.process_name} [{pid}] ignored SIGINT; sending SIGKILL')
                     self._send(pid, signal.SIGKILL)
                     self.signaled[pid] = now
                 continue

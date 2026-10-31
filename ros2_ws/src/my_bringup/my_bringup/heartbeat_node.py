@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""
+r"""
 Heartbeat node: periodically POSTs the robot's status to the robo-web API.
 
 Every `interval_s` it sends JSON to `{api_url}/api/heartbeat`. Only the stdlib
 is used (urllib), and network failures are logged (throttled) but never
 crash the node, so a dead hotspot can't take the robot down with it.
 
-    ros2 run my_bringup heartbeat_node --ros-args -p api_url:=https://x.vercel.app -p robot_id:=robo-1
+    ros2 run my_bringup heartbeat_node --ros-args \
+        -p api_url:=https://x.vercel.app -p robot_id:=robo-1
 """
 import json
 import os
@@ -101,7 +102,8 @@ class Heartbeat(Node):
         if Twist is not None:
             self.create_subscription(Twist, '/cmd_vel', self._on_cmd_vel, 10)
 
-        self.get_logger().info(f'heartbeat {self.robot_id} -> {self.api_url}/api/heartbeat every {self.interval}s')
+        self.get_logger().info(
+            f'heartbeat {self.robot_id} -> {self.api_url}/api/heartbeat every {self.interval}s')
         self.timer = self.create_timer(self.interval, self.tick)
         self.tick()  # announce immediately, don't wait one interval
 

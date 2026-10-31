@@ -28,7 +28,7 @@ class DriveGeometry:
 @dataclass(frozen=True)
 class ServoMap:
     center_deg: float = 45.0                  # servo command that points the wheels straight
-    deg_per_rad: float = 57.29577951308232    # servo degrees per radian of road-wheel angle (negative flips)
+    deg_per_rad: float = 57.29577951308232    # servo deg per rad of road-wheel angle (< 0 flips)
     min_deg: float = 0.0
     max_deg: float = 180.0
 

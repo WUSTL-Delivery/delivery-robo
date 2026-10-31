@@ -61,7 +61,8 @@ def test_standstill_steering_uses_min_speed_and_clips():
 def test_steering_is_clipped_both_ways():
     assert steering_from_twist(0.2, 5.0, GEOM) == pytest.approx(GEOM.max_steer_rad)
     assert steering_from_twist(0.2, -5.0, GEOM) == pytest.approx(-GEOM.max_steer_rad)
-    assert yaw_rate_from_steering(1.0, 2.0, GEOM) == pytest.approx(math.tan(GEOM.max_steer_rad) / L)
+    assert yaw_rate_from_steering(1.0, 2.0, GEOM) == pytest.approx(
+        math.tan(GEOM.max_steer_rad) / L)
 
 
 @pytest.mark.parametrize('v', [0.0, 0.3, 1.0, -0.4, 1.5])

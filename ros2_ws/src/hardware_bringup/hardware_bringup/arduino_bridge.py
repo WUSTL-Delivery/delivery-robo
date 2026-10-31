@@ -10,9 +10,10 @@ and plug order decides which is ``ttyUSB0``. When it is missing the node says wh
 Data flow::
 
     /cmd_vel_out (Twist, from twist_mux) --> Ackermann inversion --> "m <pwm> <servo>\r"
-    "e\r" polled at 20 Hz  --> AS5047P angle (deg) -> unwrap, gear ratio --> /odom (twist only)
-                                                                          --> /wheel_angle (Float64, deg)
-                                                                          --> /wheel_ticks (Float64, raw deg)
+    "e\r" polled at 20 Hz  --> AS5047P angle (deg) -> unwrap, gear ratio
+                               --> /odom (twist only)
+                               --> /wheel_angle (Float64, deg)
+                               --> /wheel_ticks (Float64, raw deg)
     the command actually sent (after clipping / watchdog)          --> /cmd_vel_executed
 
 ``/cmd_vel_executed`` is what ``state_estimation`` should use as its ``cmd_vel_topic``: it is
@@ -131,9 +132,12 @@ class ArduinoBridge(Node):
             pwm_per_mps=float(p('pwm_per_mps', 110.0 / 1.5)),
             pwm_limit=int(p('pwm_limit', 110)),
         )
-        self._gear_ratio = float(p('gear_ratio', 10.0 / 12.0))         # motor-gear teeth / wheel-gear teeth
-        self._wheel_radius_m = float(p('wheel_radius_m', 0.001))       # PLACEHOLDER: measure and set, m
-        self._encoder_direction = float(p('encoder_direction', 1.0))   # +1/-1: flip if angle grows reversed
+        # motor-gear teeth / wheel-gear teeth
+        self._gear_ratio = float(p('gear_ratio', 10.0 / 12.0))
+        # PLACEHOLDER: measure and set, m
+        self._wheel_radius_m = float(p('wheel_radius_m', 0.001))
+        # +1/-1: flip if angle grows reversed
+        self._encoder_direction = float(p('encoder_direction', 1.0))
         self._validate_params()
 
         # --- state ---
@@ -141,14 +145,15 @@ class ArduinoBridge(Node):
         self._ser_lock = threading.Lock()
         self._tx_enabled_at = float('inf')      # monotonic time after which writes are allowed
         self._splitter = LineSplitter()
-        self._samples = deque()                 # (ros_time_ns, angle_deg) filled by the reader thread
+        # (ros_time_ns, angle_deg) filled by the reader thread
+        self._samples = deque()
         self._prev_sample = None
         self._ready = False
         self._error_replies = 0
         self._last_cmd = None                   # (v, omega)
         self._last_cmd_time = None              # monotonic
         self._watchdog_tripped = True           # start in the safe state until a command arrives
-        self._delta_cmd = 0.0                   # steering angle currently commanded (for /odom yaw rate)
+        self._delta_cmd = 0.0                   # steering angle commanded now (for /odom yaw rate)
         self._wheel_angle_deg = 0.0             # cumulative gear-corrected wheel-shaft angle (deg)
 
         # --- ROS interfaces ---
@@ -162,7 +167,8 @@ class ArduinoBridge(Node):
         self.create_timer(1.0, self._reconnect_tick)
 
         self._stop_event = threading.Event()
-        self._reader = threading.Thread(target=self._reader_loop, name='arduino-reader', daemon=True)
+        self._reader = threading.Thread(
+            target=self._reader_loop, name='arduino-reader', daemon=True)
         self._reader.start()
         self._open_serial()
 
@@ -213,7 +219,8 @@ class ArduinoBridge(Node):
             ser.reset_input_buffer()
         except (serial.SerialException, OSError) as exc:
             self.get_logger().warning(
-                f'cannot open {self._port}: {exc}; retrying every second', throttle_duration_sec=10.0
+                f'cannot open {self._port}: {exc}; retrying every second',
+                throttle_duration_sec=10.0
             )
             return False
         self._splitter = LineSplitter()
@@ -223,7 +230,8 @@ class ArduinoBridge(Node):
         # ~2 s. Nothing is written until then (test_serial.py sleeps for the same reason).
         self._tx_enabled_at = time.monotonic() + self._reset_s
         self._ser = ser
-        self.get_logger().info(f'opened {self._port}; waiting {self._reset_s:.1f} s for the Arduino reset')
+        self.get_logger().info(
+            f'opened {self._port}; waiting {self._reset_s:.1f} s for the Arduino reset')
         return True
 
     def _close_serial(self, reason):
@@ -283,7 +291,8 @@ class ArduinoBridge(Node):
                     self._samples.append((self.get_clock().now().nanoseconds, angle_deg))
                     if not self._ready:
                         self._ready = True
-                        self.get_logger().info(f'Arduino ready (encoder angle {angle_deg:.2f} deg)')
+                        self.get_logger().info(
+                            f'Arduino ready (encoder angle {angle_deg:.2f} deg)')
                 elif is_error_response(line):
                     self._error_replies += 1
                     self.get_logger().warning(
@@ -312,7 +321,8 @@ class ArduinoBridge(Node):
             self._watchdog_tripped = stale
             if stale:
                 self.get_logger().warning(
-                    f'no command for {self._watchdog_s:.2f} s: stopping (m 0 {self._servo.center_deg:.0f})'
+                    f'no command for {self._watchdog_s:.2f} s: '
+                    f'stopping (m 0 {self._servo.center_deg:.0f})'
                 )
             else:
                 self.get_logger().info('commands resumed')
@@ -351,7 +361,8 @@ class ArduinoBridge(Node):
             prev_t, prev_angle_deg = self._prev_sample
             dt = (t_ns - prev_t) * 1e-9
             if dt < self._min_enc_dt:
-                continue                        # replies bunched after a firmware stall: merge with the next
+                # replies bunched after a firmware stall: merge with the next
+                continue
             if dt > self._max_enc_dt:
                 self._prev_sample = (t_ns, angle_deg)  # gap too long to differentiate across
                 continue
@@ -360,7 +371,8 @@ class ArduinoBridge(Node):
             # too low for the motor's top speed).
             delta_motor_deg = angle_deg - prev_angle_deg
             delta_motor_deg -= 360.0 * round(delta_motor_deg / 360.0)
-            delta_wheel_rad = math.radians(delta_motor_deg) * self._gear_ratio * self._encoder_direction
+            delta_wheel_rad = (math.radians(delta_motor_deg) * self._gear_ratio
+                               * self._encoder_direction)
             self._wheel_angle_deg += math.degrees(delta_wheel_rad)
             self._wheel_angle_pub.publish(Float64(data=self._wheel_angle_deg))
             v, omega = odom_from_ticks(delta_wheel_rad, dt, self._wheel_radius_m, self._delta_cmd,

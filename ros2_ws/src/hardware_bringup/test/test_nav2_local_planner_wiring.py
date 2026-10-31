@@ -49,7 +49,8 @@ def test_tdm24_planner_id_default_without_planner_section():
 
 def test_tdm24_launch_arguments():
     if not tdm24_launch._have('hardware_bringup'):
-        pytest.skip('hardware_bringup not built/sourced (the params_file default needs its share dir)')
+        pytest.skip('hardware_bringup not built/sourced '
+                    '(the params_file default needs its share dir)')
     ld = tdm24_launch.generate_launch_description()
     args = {a.name: a for a in ld.get_launch_arguments()}
     assert args['local_planner'].default_value[0].text == 'true'

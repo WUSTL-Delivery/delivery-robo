@@ -53,7 +53,8 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from sensor_msgs.msg import NavSatFix
 from tf2_msgs.msg import TFMessage
 
-# global_planner.py: true_origin_x = 734765 + 91.46309417473815, true_origin_y = 4281212 - 24.993696585102057
+# global_planner.py: true_origin_x = 734765 + 91.46309417473815,
+#                    true_origin_y = 4281212 - 24.993696585102057
 PLANNER_UTM_ORIGIN_X = 734856.4630941747
 PLANNER_UTM_ORIGIN_Y = 4281187.006303415
 
@@ -132,12 +133,13 @@ class GpsDatumTf(Node):
         check_hz = float(p('subscriber_check_hz', 1.0))
 
         if self._in_topic == self._out_topic:
-            raise ValueError('gps_in_topic and gps_out_topic must differ (the node would relay to itself)')
+            raise ValueError(
+                'gps_in_topic and gps_out_topic must differ (the node would relay to itself)')
         if self._projection not in PROJECTIONS:
             raise ValueError(f'projection must be one of {PROJECTIONS}, got {self._projection!r}')
         if self._projection == 'local_enu' and not all(math.isfinite(v) for v in self._enu_origin):
-            raise ValueError('projection local_enu needs enu_origin_lat and enu_origin_lon (the Gazebo '
-                             "world's <spherical_coordinates>)")
+            raise ValueError('projection local_enu needs enu_origin_lat and enu_origin_lon '
+                             "(the Gazebo world's <spherical_coordinates>)")
 
         self._datum = None
         self._armed = True
@@ -163,11 +165,13 @@ class GpsDatumTf(Node):
         self.create_timer(1.0 / check_hz, self._check_tick)
 
         if self._projection == 'utm':
-            frame = f'UTM zone {self._zone}{"N" if self._northern else "S"}, planner origin {self._origin}'
+            frame = (f'UTM zone {self._zone}{"N" if self._northern else "S"}, '
+                     f'planner origin {self._origin}')
         else:
             frame = f'local ENU about lat/lon/alt {self._enu_origin}'
         self.get_logger().info(
-            f'gps_datum_tf: {self._in_topic} -> {self._out_topic} (min_status {self._min_status}), '
+            f'gps_datum_tf: {self._in_topic} -> {self._out_topic} '
+            f'(min_status {self._min_status}), '
             f'{self._map_frame} -> {self._odom_frame} from the first forwarded fix; {frame}'
         )
 
@@ -191,9 +195,9 @@ class GpsDatumTf(Node):
             self._checked_preexisting = True
             if n > 0 and self._forwarded == 0:
                 self.get_logger().warning(
-                    f'{n} node(s) already subscribe to {self._out_topic} (an EKF that outlived a restart '
-                    'of this node?). Their datum is unknown here; restart the whole stack with the '
-                    'robot stationary if map->base_link looks offset.'
+                    f'{n} node(s) already subscribe to {self._out_topic} (an EKF that outlived a '
+                    'restart of this node?). Their datum is unknown here; restart the whole stack '
+                    'with the robot stationary if map->base_link looks offset.'
                 )
         if n > 0:
             self._had_subscriber = True
@@ -241,7 +245,8 @@ class GpsDatumTf(Node):
     def _set_datum(self, msg):
         lat, lon = msg.latitude, msg.longitude
         if self._projection == 'utm':
-            tx, ty, tz, gamma = datum_transform_utm(lat, lon, self._zone, self._northern, self._origin)
+            tx, ty, tz, gamma = datum_transform_utm(
+                lat, lon, self._zone, self._northern, self._origin)
             how = 'grid convergence'
         else:
             alt = msg.altitude if math.isfinite(msg.altitude) else self._enu_origin[2]
@@ -264,13 +269,15 @@ class GpsDatumTf(Node):
         self._datum = msg
         self._datum_pub.publish(msg)
         self.get_logger().info(
-            f'datum set: lat {lat:.8f} lon {lon:.8f} alt {msg.altitude:.3f} status {msg.status.status} '
+            f'datum set: lat {lat:.8f} lon {lon:.8f} alt {msg.altitude:.3f} '
+            f'status {msg.status.status} '
             f'-> {self._map_frame}->{self._odom_frame} = ({tx:.3f}, {ty:.3f}, {tz:.3f}) m, '
             f'yaw {math.degrees(gamma):.4f} deg ({how}, {self._projection})'
         )
         if math.hypot(tx, ty) > 2000.0:
             self.get_logger().error(
-                f'datum is {math.hypot(tx, ty):.0f} m from the {self._map_frame} origin: wrong UTM zone, '
+                f'datum is {math.hypot(tx, ty):.0f} m from the {self._map_frame} origin: '
+                'wrong UTM zone, '
                 'wrong planner_origin / enu_origin, or the GPS is not on campus'
             )
 

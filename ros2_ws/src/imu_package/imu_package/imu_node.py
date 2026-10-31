@@ -31,7 +31,8 @@ class ImuNode(Node):
         # exposes the interval from adafruit-circuitpython-bno08x 1.3.0; older versions are
         # fixed at 50 ms, so the values read faster than 20 Hz repeat the previous sample.
         report_interval_us = int(round(1e6 / rate_hz))
-        for feature in (BNO_REPORT_ACCELEROMETER, BNO_REPORT_ROTATION_VECTOR, BNO_REPORT_GYROSCOPE):
+        for feature in (BNO_REPORT_ACCELEROMETER, BNO_REPORT_ROTATION_VECTOR,
+                        BNO_REPORT_GYROSCOPE):
             try:
                 self.bno.enable_feature(feature, report_interval_us)
             except TypeError:
@@ -63,9 +64,18 @@ class ImuNode(Node):
         msg.angular_velocity.y = gyro_y
         msg.angular_velocity.z = gyro_z
 
-        msg.orientation_covariance = [1.1912989969130138e-08, 7.458051230937461e-11, -7.714913773216416e-10, 7.458051230937461e-11, 4.578213663520167e-09, -6.144561660125438e-10, -7.714913773216416e-10, -6.144561660125438e-10, 7.026383185562511e-08]
-        msg.angular_velocity_covariance = [1.5105170688371545e-06, -1.1745603636778752e-08, -1.9045815937753488e-07, -1.1745603636778752e-08, 4.2638258674014977e-07, -2.2517018702222813e-08, -1.9045815937753488e-07, -2.2517018702222813e-08, 1.0818464270587167e-06]
-        msg.linear_acceleration_covariance = [3.525993954008387e-06, 1.2365802041646368e-08, 8.610262162331126e-08, 1.2365802041646368e-08, 2.0331439523472155e-05, -1.1739878728426825e-06, 8.610262162331126e-08, -1.1739878728426825e-06, 0.000130014958651195]
+        msg.orientation_covariance = [
+            1.1912989969130138e-08, 7.458051230937461e-11, -7.714913773216416e-10,
+            7.458051230937461e-11, 4.578213663520167e-09, -6.144561660125438e-10,
+            -7.714913773216416e-10, -6.144561660125438e-10, 7.026383185562511e-08]
+        msg.angular_velocity_covariance = [
+            1.5105170688371545e-06, -1.1745603636778752e-08, -1.9045815937753488e-07,
+            -1.1745603636778752e-08, 4.2638258674014977e-07, -2.2517018702222813e-08,
+            -1.9045815937753488e-07, -2.2517018702222813e-08, 1.0818464270587167e-06]
+        msg.linear_acceleration_covariance = [
+            3.525993954008387e-06, 1.2365802041646368e-08, 8.610262162331126e-08,
+            1.2365802041646368e-08, 2.0331439523472155e-05, -1.1739878728426825e-06,
+            8.610262162331126e-08, -1.1739878728426825e-06, 0.000130014958651195]
 
         self.publisher_.publish(msg)
 

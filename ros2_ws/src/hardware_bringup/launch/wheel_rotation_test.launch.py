@@ -17,13 +17,16 @@ def generate_launch_description():
     share = get_package_share_directory('hardware_bringup')
     hardware = LaunchConfiguration('hardware_params')
     return LaunchDescription([
-        DeclareLaunchArgument('ticks_per_rotation', description='Measured counts per WHEEL revolution'),
+        DeclareLaunchArgument('ticks_per_rotation',
+                              description='Measured counts per WHEEL revolution'),
         DeclareLaunchArgument('port', description='Arduino /dev/serial/by-id/... path'),
         DeclareLaunchArgument('throttle', default_value='0.1'),
         DeclareLaunchArgument('encoder_direction', default_value='1'),
         DeclareLaunchArgument('max_run_seconds', default_value='10.0',
-                              description='Trial stops after this long even if the count never reaches the target'),
-        DeclareLaunchArgument('hardware_params', default_value=os.path.join(share, 'config', 'hardware.yaml')),
+                              description='Trial stops after this long even if the count '
+                                          'never reaches the target'),
+        DeclareLaunchArgument('hardware_params',
+                              default_value=os.path.join(share, 'config', 'hardware.yaml')),
         Node(package='hardware_bringup', executable='wheel_rotation_test', output='screen',
              parameters=[{'ticks_per_rotation': value('ticks_per_rotation', int),
                           'encoder_direction': value('encoder_direction', int),

@@ -66,7 +66,8 @@ class JoyToCmdVel(Node):
         self.get_logger().info(
             f'joy_to_cmdvel: {joy_topic} -> {output_topic}; throttle axis {self._axis_throttle}, '
             f'steer axis {self._axis_steer}, max {self._max_speed} m/s, '
-            f'enable button {self._enable_button} ({"required" if self._require_enable else "ignored"}), '
+            f'enable button {self._enable_button} '
+            f'({"required" if self._require_enable else "ignored"}), '
             f'require_joystick={self._require_joystick}'
         )
 
@@ -80,7 +81,8 @@ class JoyToCmdVel(Node):
     def _set_override(self, active):
         if active != self._override_active:
             self._override_active = active
-            self.get_logger().info('manual override ACTIVE' if active else 'manual override released')
+            self.get_logger().info(
+                'manual override ACTIVE' if active else 'manual override released')
 
     def _tick(self):
         now = time.monotonic()
@@ -105,12 +107,14 @@ class JoyToCmdVel(Node):
                 return
         if len(msg.axes) <= max(self._axis_throttle, self._axis_steer):
             self.get_logger().warning(
-                f'/joy has only {len(msg.axes)} axes; need indices {self._axis_throttle} and {self._axis_steer}',
+                f'/joy has only {len(msg.axes)} axes; '
+                f'need indices {self._axis_throttle} and {self._axis_steer}',
                 throttle_duration_sec=5.0,
             )
             return
 
-        throttle = _clamp_unit(msg.axes[self._axis_throttle]) * (-1.0 if self._invert_throttle else 1.0)
+        throttle = _clamp_unit(msg.axes[self._axis_throttle]) * (
+            -1.0 if self._invert_throttle else 1.0)
         steer = _clamp_unit(msg.axes[self._axis_steer]) * (-1.0 if self._invert_steer else 1.0)
         v = throttle * self._max_speed
         delta = steer * self._geom.max_steer_rad

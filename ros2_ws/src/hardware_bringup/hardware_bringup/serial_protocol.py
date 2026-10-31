@@ -36,14 +36,22 @@ def is_error_response(line):
 
 
 class LineSplitter:
-    r"""Incremental splitter tolerant of ``\r\n``, lone ``\r`` (the error reply) and lone ``\n``."""
+    r"""
+    Incremental line splitter.
+
+    Tolerant of ``\r\n``, lone ``\r`` (the error reply) and lone ``\n``.
+    """
 
     def __init__(self, max_buffer=4096):
         self._buf = bytearray()
         self.max_buffer = max_buffer
 
     def feed(self, data):
-        """Append ``data``; return the complete, non-empty lines it produced (terminators stripped)."""
+        """
+        Append ``data``; return the complete, non-empty lines it produced.
+
+        Line terminators are stripped.
+        """
         self._buf.extend(data)
         parts = _LINE_END.split(bytes(self._buf))
         self._buf = bytearray(parts[-1])          # trailing partial line, possibly empty

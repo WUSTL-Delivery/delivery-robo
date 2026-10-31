@@ -1,13 +1,17 @@
 """
 Nav2 local planning: costmap + planner_server + local_planner (TDM-21, TDM-24).
 
-    ros2 launch hardware_bringup nav2_local.launch.py                     # robot, sources:=fused
-    ros2 launch hardware_bringup nav2_local.launch.py sources:=separate   # lidar + camera, both mark/clear
+    # robot, sources:=fused
+    ros2 launch hardware_bringup nav2_local.launch.py
+    # lidar + camera, both mark/clear
+    ros2 launch hardware_bringup nav2_local.launch.py sources:=separate
     ros2 launch hardware_bringup nav2_local.launch.py sources:=lidar scan_topic:=/scan
-    ros2 launch hardware_bringup nav2_local.launch.py sim:=true           # sim time, lidar on /scan
-    ros2 launch hardware_bringup nav2_local.launch.py sim:=true drive:=true   # ... and drive the sim
+    # sim time, lidar on /scan; with drive:=true also drive the sim
+    ros2 launch hardware_bringup nav2_local.launch.py sim:=true
+    ros2 launch hardware_bringup nav2_local.launch.py sim:=true drive:=true
     ros2 launch hardware_bringup nav2_local.launch.py map:=/path/to/boundary.yaml
-    ros2 launch hardware_bringup nav2_local.launch.py local_planner:=false    # costmap + planner only
+    # costmap + planner only
+    ros2 launch hardware_bringup nav2_local.launch.py local_planner:=false
 
 Starts map_server (the boundary map on /map), planner_server (whose global costmap is the
 costmap: static_layer from /map, obstacle_layer from the scans, inflation; frame odom, rolling
@@ -252,7 +256,8 @@ def _role(source):
 
 
 def _launch_setup(context):
-    import yaml  # noqa: PLC0415 - python3-yaml; imported here so a broken install only fails this launch
+    # python3-yaml; imported here so a broken install only fails this launch
+    import yaml  # noqa: PLC0415
 
     sim = LaunchConfiguration('sim').perform(context) == 'true'
     sources = LaunchConfiguration('sources').perform(context)
@@ -276,8 +281,8 @@ def _launch_setup(context):
             + f'. Fix: {APT_SYNC}; Nav2 NOT started'))]
     if not map_yaml:
         return [LogInfo(msg=('[nav2_local] no map: pass map:=<boundary.yaml> (the default '
-                             'share/autonomy/maps/boundary.yaml needs the autonomy package built); '
-                             'Nav2 NOT started'))]
+                             'share/autonomy/maps/boundary.yaml needs the autonomy package '
+                             'built); Nav2 NOT started'))]
     map_yaml = os.path.abspath(os.path.expanduser(map_yaml))
     if not os.path.isfile(map_yaml):
         return [LogInfo(msg=f'[nav2_local] map {map_yaml} does not exist; Nav2 NOT started')]
@@ -304,8 +309,8 @@ def _launch_setup(context):
                                     'the costmap goes stale. The sim has no camera: /camera/scan '
                                     'stays missing')))
     elif sim and sources == 'separate':
-        actions.append(LogInfo(msg=('[nav2_local] sources:=separate with sim:=true: the sim has no '
-                                    'camera, so /camera/scan stays missing and the lidar works '
+        actions.append(LogInfo(msg=('[nav2_local] sources:=separate with sim:=true: the sim has '
+                                    'no camera, so /camera/scan stays missing and the lidar works '
                                     'alone')))
 
     actions.append(Node(
@@ -356,7 +361,8 @@ def _launch_setup(context):
                 executable='local_planner',
                 name='local_planner',
                 output='screen',
-                respawn=True,          # a restart forgets the goal: it never resumes driving by itself
+                # a restart forgets the goal: it never resumes driving by itself
+                respawn=True,
                 respawn_delay=3.0,
                 parameters=[local_planner_params(params, sim=sim, drive=drive)],
             ))
@@ -368,7 +374,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'map', default_value='',
-            description='boundary map yaml for map_server; empty = share/autonomy/maps/boundary.yaml '
+            description='boundary map yaml for map_server; '
+                        'empty = share/autonomy/maps/boundary.yaml '
                         '(required when the autonomy package is not built)'),
         DeclareLaunchArgument(
             'sources', default_value='auto', choices=['auto', 'fused', 'separate', 'lidar'],
@@ -380,17 +387,20 @@ def generate_launch_description():
             description='lidar LaserScan topic; empty = /scan_filtered (/scan with sim:=true)'),
         DeclareLaunchArgument(
             'sim', default_value='false', choices=['true', 'false'],
-            description='delivery-autonomy Gazebo sim: use_sim_time, lidar on /scan, sources auto -> lidar'),
+            description='delivery-autonomy Gazebo sim: use_sim_time, lidar on /scan, '
+                        'sources auto -> lidar'),
         DeclareLaunchArgument(
             'params_file', default_value=os.path.join(share, 'config', 'nav2_local.yaml'),
-            description='Nav2 parameters (map_server, planner_server, global_costmap, lifecycle manager)'),
+            description='Nav2 parameters '
+                        '(map_server, planner_server, global_costmap, lifecycle manager)'),
         DeclareLaunchArgument(
             'local_planner', default_value='true', choices=['true', 'false'],
             description='run hardware_bringup local_planner (/goal_pose or /nav/goal_node -> '
-                        'ComputePathToPose -> /nav/local_plan); false = costmap + planner_server only'),
+                        'ComputePathToPose -> /nav/local_plan); '
+                        'false = costmap + planner_server only'),
         DeclareLaunchArgument(
             'drive', default_value='false', choices=['true', 'false'],
-            description="local_planner also sends each path to delivery-autonomy's /follow_path (MPPI); "
-                        'false = plan and publish /nav/local_plan only'),
+            description="local_planner also sends each path to delivery-autonomy's /follow_path "
+                        '(MPPI); false = plan and publish /nav/local_plan only'),
         OpaqueFunction(function=_launch_setup),
     ])

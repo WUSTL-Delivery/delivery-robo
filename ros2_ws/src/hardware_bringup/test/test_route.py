@@ -233,8 +233,9 @@ TDM28_NEAR_S_CURVE = [(-93.79, 2.05), (-93.59, 2.59), (-93.27, 3.08), (-93.14, 3
 TDM28_U_TURN = [
     (-93.30, 2.00), (-93.12, 2.49), (-92.81, 2.91), (-92.54, 3.35), (-92.32, 3.80), (-92.29, 4.43),
     (-92.64, 4.92), (-93.22, 5.07), (-93.76, 4.82), (-94.04, 4.27), (-94.01, 3.60), (-93.92, 3.10),
-    (-93.85, 2.58), (-93.84, 2.06), (-93.86, 1.54), (-93.87, 1.02), (-93.85, 0.51), (-93.81, -0.00),
-    (-93.79, -0.63), (-93.80, -1.22), (-93.80, -1.80), (-93.81, -2.39), (-93.82, -2.97), (-93.82, -2.97),
+    (-93.85, 2.58), (-93.84, 2.06), (-93.86, 1.54), (-93.87, 1.02), (-93.85, 0.51),
+    (-93.81, -0.00), (-93.79, -0.63), (-93.80, -1.22), (-93.80, -1.80), (-93.81, -2.39),
+    (-93.82, -2.97), (-93.82, -2.97),
 ]
 
 
@@ -243,7 +244,8 @@ def test_tdm28_near_goal_loop_is_rejected():
     assert loop_excess(TDM28_NEAR_LOOP) > 9.0
     assert is_loop(TDM28_NEAR_LOOP, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW, margin=5.0)
     # the goal heading only has to be within 90 deg of the robot's
-    assert is_loop(TDM28_NEAR_LOOP, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW + math.radians(80.0), margin=5.0)
+    assert is_loop(
+        TDM28_NEAR_LOOP, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW + math.radians(80.0), margin=5.0)
 
 
 def test_tdm28_s_curve_to_a_near_goal_passes():
@@ -255,7 +257,8 @@ def test_tdm28_u_turn_to_a_goal_behind_passes():
     # 7+ m longer than the straight line, like a loop, but the goal faces the other way
     assert loop_excess(TDM28_U_TURN) > 5.0
     assert not is_loop(TDM28_U_TURN, TDM28_ROBOT_YAW, math.radians(264.0), margin=5.0)
-    assert not is_loop(TDM28_U_TURN, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW + math.radians(91.0), margin=5.0)
+    assert not is_loop(
+        TDM28_U_TURN, TDM28_ROBOT_YAW, TDM28_ROBOT_YAW + math.radians(91.0), margin=5.0)
 
 
 def test_tdm28_route_arc_is_not_a_detour():
@@ -265,11 +268,13 @@ def test_tdm28_route_arc_is_not_a_detour():
     assert is_loop(switchback, 0.0, 0.0, margin=5.0)
     assert not is_loop(switchback, 0.0, 0.0, margin=5.0, expected_length=path_length(switchback))
     # an arc shorter than the straight line changes nothing
-    assert loop_excess(TDM28_NEAR_LOOP, expected_length=0.5) == pytest.approx(loop_excess(TDM28_NEAR_LOOP))
+    assert loop_excess(TDM28_NEAR_LOOP, expected_length=0.5) == pytest.approx(
+        loop_excess(TDM28_NEAR_LOOP))
 
 
 def test_tdm28_loop_heading_check_wraps_around_pi():
-    assert angle_difference(math.radians(179.0), math.radians(-179.0)) == pytest.approx(math.radians(-2.0))
+    assert angle_difference(math.radians(179.0), math.radians(-179.0)) == pytest.approx(
+        math.radians(-2.0))
     assert is_loop(TDM28_NEAR_LOOP, math.radians(179.0), math.radians(-179.0), margin=5.0)
     assert not is_loop(TDM28_NEAR_LOOP, math.radians(179.0), math.radians(-1.0), margin=5.0)
 
@@ -286,11 +291,13 @@ def test_tdm28_duplicate_last_pose_is_dropped_keeping_the_goal_pose():
     assert keep == list(range(n - 2)) + [n - 1]   # the goal's own pose (heading -95 deg) survives
     kept = [TDM28_U_TURN[i] for i in keep]
     gaps = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(kept, kept[1:])]
-    assert min(gaps) > 0.4                        # no zero-length segment left to take a heading from
+    # no zero-length segment left to take a heading from
+    assert min(gaps) > 0.4
 
 
 def test_tdm28_near_duplicates_under_a_centimetre_merge():
-    pts = [(0.0, 0.0), (0.004, 0.0), (0.5, 0.0), (0.5, 0.009), (1.0, 0.0), (1.0, 0.0), (1.005, 0.0)]
+    pts = [(0.0, 0.0), (0.004, 0.0), (0.5, 0.0), (0.5, 0.009), (1.0, 0.0), (1.0, 0.0),
+           (1.005, 0.0)]
     # the first of each cluster stays, except the final cluster, which keeps its last (goal) pose
     assert drop_duplicate_points(pts) == [0, 2, 6]
     # 1 cm and more is a real step

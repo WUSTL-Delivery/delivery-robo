@@ -54,8 +54,9 @@ def test_rotation_and_translation():
 def test_current_model_aligns_a_shared_wall():
     # Read actual model properties; never apply this mount again to /camera/scan.
     model = Path(__file__).resolve().parents[2] / 'robot_description/urdf/robot.urdf.xacro'
-    properties = {p.attrib['name']: float(p.attrib['value'])
-                  for p in ET.parse(model).getroot().findall('{http://ros.org/wiki/xacro}property')}
+    properties = {
+        p.attrib['name']: float(p.attrib['value'])
+        for p in ET.parse(model).getroot().findall('{http://ros.org/wiki/xacro}property')}
     lidar_mount = transform(properties['lidar_x'], properties['lidar_y'],
                             properties['lidar_z'], properties['lidar_yaw'])
     camera_mount = transform(properties['camera_x'], properties['camera_y'],

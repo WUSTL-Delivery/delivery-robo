@@ -25,7 +25,8 @@ def quaternion_to_rpy(x: float, y: float, z: float, w: float) -> np.ndarray:
 
 
 class ImuCovarianceEstimator(Node):
-    def __init__(self, topic: str, warmup_samples: int, target_samples: int, min_variance: float) -> None:
+    def __init__(self, topic: str, warmup_samples: int, target_samples: int,
+                 min_variance: float) -> None:
         super().__init__('imu_covariance_estimator')
         self.topic = topic
         self.warmup_samples = warmup_samples
@@ -68,10 +69,12 @@ class ImuCovarianceEstimator(Node):
         qw = msg.orientation.w
         qnorm = np.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
         if qnorm > 1e-9:
-            self.orientation_samples.append(quaternion_to_rpy(qx / qnorm, qy / qnorm, qz / qnorm, qw / qnorm))
+            self.orientation_samples.append(
+                quaternion_to_rpy(qx / qnorm, qy / qnorm, qz / qnorm, qw / qnorm))
 
         self.angular_velocity_samples.append(
-            np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z], dtype=np.float64)
+            np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z],
+                     dtype=np.float64)
         )
         self.linear_accel_samples.append(
             np.array(
@@ -88,7 +91,8 @@ class ImuCovarianceEstimator(Node):
             self.finished = True
             self.report_and_shutdown()
 
-    def _covariance_from_samples(self, values: List[np.ndarray], unwrap_angles: bool = False) -> np.ndarray:
+    def _covariance_from_samples(self, values: List[np.ndarray],
+                                 unwrap_angles: bool = False) -> np.ndarray:
         if len(values) < 2:
             raise RuntimeError('Need at least 2 samples to compute covariance.')
 
@@ -111,7 +115,8 @@ class ImuCovarianceEstimator(Node):
 
     def report_and_shutdown(self) -> None:
         try:
-            orientation_cov = self._covariance_from_samples(self.orientation_samples, unwrap_angles=True)
+            orientation_cov = self._covariance_from_samples(
+                self.orientation_samples, unwrap_angles=True)
             angular_cov = self._covariance_from_samples(self.angular_velocity_samples)
             linear_cov = self._covariance_from_samples(self.linear_accel_samples)
         except RuntimeError as exc:

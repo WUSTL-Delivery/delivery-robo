@@ -69,7 +69,8 @@ def main(args=None):
     parser.add_argument('--output', required=True, help='New directory for CSV and summary.json')
     measure = parser.add_mutually_exclusive_group()
     measure.add_argument('--distance', type=positive, help='Measured FORWARD travel in metres')
-    measure.add_argument('--turns', type=positive, help='Measured wheel rotations in ONE direction')
+    measure.add_argument('--turns', type=positive,
+                         help='Measured wheel rotations in ONE direction')
     opts = parser.parse_args(args)
     if not sys.stdin.isatty():
         parser.error('Run interactively in a terminal (start / finish / quit commands)')

@@ -52,7 +52,8 @@ def generate_launch_description():
             f'[costmap_check] missing {", ".join(missing)}: sudo apt install '
             + ' '.join('ros-jazzy-' + p.replace('_', '-') for p in missing)))])
 
-    params = os.path.join(get_package_share_directory('my_bringup'), 'config', 'costmap_check.yaml')
+    params = os.path.join(
+        get_package_share_directory('my_bringup'), 'config', 'costmap_check.yaml')
     return LaunchDescription(args + [
         # Standalone Costmap2DROS; in Jazzy it names itself /costmap.
         Node(

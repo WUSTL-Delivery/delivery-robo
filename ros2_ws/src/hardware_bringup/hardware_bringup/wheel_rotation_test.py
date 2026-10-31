@@ -114,9 +114,10 @@ def main(args=None):
             if encoder_type not in ('int64', 'string'):
                 raise ValueError('encoder_message_type must be int64 or string')
             self.joy_pub = self.create_publisher(Joy, '/encoder_test/joy', 10)
-            self.status_pub = self.create_publisher(String, '/encoder_test/rotation_status',
-                                                    QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
-                                                               durability=DurabilityPolicy.TRANSIENT_LOCAL))
+            self.status_pub = self.create_publisher(
+                String, '/encoder_test/rotation_status',
+                QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                           durability=DurabilityPolicy.TRANSIENT_LOCAL))
             self.create_subscription(Int64 if encoder_type == 'int64' else String,
                                      encoder_topic, self.on_count, qos_profile_sensor_data)
             self.get_logger().info(f'Encoder input: {encoder_topic} ({encoder_type})')
@@ -166,7 +167,8 @@ def main(args=None):
             if self.trial.state == 'waiting':
                 if now - self.created >= self.wait_seconds:
                     self.trial.stop('startup timeout: no settled encoder or Joy subscriber')
-                elif self.joy_pub.get_subscription_count() > 0 and settled(list(self.history), now):
+                elif (self.joy_pub.get_subscription_count() > 0
+                      and settled(list(self.history), now)):
                     self.trial.start(self.history[-1][1], now)
                     self.send(self.throttle)  # The ONLY nonzero message in the trial.
             else:

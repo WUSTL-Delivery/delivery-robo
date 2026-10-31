@@ -124,12 +124,14 @@ def test_scan_topic_override(tdm21_params):
 
 
 def test_standalone_costmap_fallback(tdm21_params):
-    manager = nav2_local.patch_params(tdm21_params, map_yaml=MAP, sources='lidar',
-                                      planner=False)['lifecycle_manager_nav2_local']['ros__parameters']
+    manager = nav2_local.patch_params(
+        tdm21_params, map_yaml=MAP, sources='lidar', planner=False,
+    )['lifecycle_manager_nav2_local']['ros__parameters']
     assert manager['node_names'] == ['map_server', 'global_costmap/global_costmap']
     assert manager['bond_timeout'] == 0.0
-    manager = nav2_local.patch_params(tdm21_params, map_yaml=MAP, sources='lidar',
-                                      planner=True)['lifecycle_manager_nav2_local']['ros__parameters']
+    manager = nav2_local.patch_params(
+        tdm21_params, map_yaml=MAP, sources='lidar', planner=True,
+    )['lifecycle_manager_nav2_local']['ros__parameters']
     assert manager['node_names'] == ['map_server', 'planner_server']
 
 
@@ -139,22 +141,23 @@ def test_tdm22_hybrid_astar_planner(tdm21_params):
     assert planner['planner_plugins'] == ['GridBased']   # = local_planner's planner_id
     grid = planner['GridBased']
     assert grid['plugin'] == 'nav2_smac_planner::SmacPlannerHybrid'
-    assert grid['motion_model_for_search'] == 'DUBIN'    # forward only: the MPPI follower can't drive cusps
-    assert grid['minimum_turning_radius'] >= 0.78        # never tighter than the real robot can turn
+    assert grid['motion_model_for_search'] == 'DUBIN'    # forward only: MPPI can't drive cusps
+    assert grid['minimum_turning_radius'] >= 0.78        # never tighter than the robot can turn
     assert grid['angle_quantization_bins'] == 72
     assert 0.0 < grid['max_planning_time'] <= 1.0        # local_planner replans at 2 Hz
     assert grid['cache_obstacle_heuristic'] is False     # rolling window + live scans
     assert grid['allow_unknown'] is False                # off-map cells are unknown
-    assert grid['smooth_path'] is False                  # TDM-42: the smoother pulls paths towards obstacles
+    assert grid['smooth_path'] is False                  # TDM-42: smoother pulls toward obstacles
     assert grid['tolerance'] == pytest.approx(0.25)
-    assert grid['lookup_table_size'] >= 12.0             # m; local_planner's default carrot distance
+    assert grid['lookup_table_size'] >= 12.0             # m; local_planner's default lookahead
 
 
 def test_tdm22_patching_leaves_the_planner_alone(tdm21_params):
     for sim in (False, True):
         patched = nav2_local.patch_params(tdm21_params, map_yaml=MAP, sources='auto', sim=sim)
         planner = patched['planner_server']['ros__parameters']
-        assert planner['GridBased'] == tdm21_params['planner_server']['ros__parameters']['GridBased']
+        assert planner['GridBased'] == (
+            tdm21_params['planner_server']['ros__parameters']['GridBased'])
         assert planner['use_sim_time'] is sim
 
 
@@ -199,11 +202,16 @@ def test_tdm29_inflation_centres_paths_in_a_3m_corridor(tdm21_params):
 
 def test_tdm29_params_path_is_per_user_and_domain():
     path = nav2_local.patched_params_path
-    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': '80'}) == '/rh/nav2_local_params_domain80.yaml'
-    assert path({'ROS_HOME': '/rh'}) == '/rh/nav2_local_params_domain0.yaml'   # ROS's default domain
-    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': ' 7 '}) == '/rh/nav2_local_params_domain7.yaml'
-    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': '../x'}) == '/rh/nav2_local_params_domain0.yaml'
-    assert path({}) == os.path.join(os.path.expanduser('~'), '.ros', 'nav2_local_params_domain0.yaml')
+    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': '80'}) == (
+        '/rh/nav2_local_params_domain80.yaml')
+    # ROS's default domain
+    assert path({'ROS_HOME': '/rh'}) == '/rh/nav2_local_params_domain0.yaml'
+    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': ' 7 '}) == (
+        '/rh/nav2_local_params_domain7.yaml')
+    assert path({'ROS_HOME': '/rh', 'ROS_DOMAIN_ID': '../x'}) == (
+        '/rh/nav2_local_params_domain0.yaml')
+    assert path({}) == os.path.join(
+        os.path.expanduser('~'), '.ros', 'nav2_local_params_domain0.yaml')
 
 
 def test_tdm29_write_params_replaces_the_file(tmp_path):
@@ -255,11 +263,13 @@ def test_tdm29_repeated_launches_leave_one_params_file(tmp_path, monkeypatch):
     for sim in ('false', 'true', 'false'):
         assert any(isinstance(a, Node) for a in _tdm29_launch(map_yaml, sim))
     # (launch may also create ROS_HOME/log); a leftover temp file would be .nav2_local_*.yaml
-    assert [f for f in os.listdir(ros_home) if f.endswith('.yaml')] == ['nav2_local_params_domain42.yaml']
+    assert [f for f in os.listdir(ros_home) if f.endswith('.yaml')] == [
+        'nav2_local_params_domain42.yaml']
     with open(ros_home / 'nav2_local_params_domain42.yaml') as f:
         params = yaml.safe_load(f)
     assert params['map_server']['ros__parameters']['yaml_filename'] == str(map_yaml)
-    assert params['map_server']['ros__parameters']['use_sim_time'] is False   # the last launch's args
+    # the last launch's args
+    assert params['map_server']['ros__parameters']['use_sim_time'] is False
 
 
 def test_tdm29_unwritable_params_file_starts_nothing(tmp_path, monkeypatch):

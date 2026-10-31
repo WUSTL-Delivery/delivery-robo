@@ -127,7 +127,8 @@ from std_msgs.msg import Empty, Int64
 from tf2_ros import Buffer, TransformException, TransformListener
 
 _STATUS_NAMES = {
-    getattr(GoalStatus, n): n[len('STATUS_'):].lower() for n in dir(GoalStatus) if n.startswith('STATUS_')
+    getattr(GoalStatus, n): n[len('STATUS_'):].lower()
+    for n in dir(GoalStatus) if n.startswith('STATUS_')
 }
 _PLAN_ERRORS = {
     getattr(ComputePathToPose.Result, n): n
@@ -145,7 +146,8 @@ class LocalPlanner(Node):
         self._drive = bool(p('drive', False))
         self._planner_id = p('planner_id', 'GridBased')
         self._lookahead = float(p('lookahead', 12.0))
-        self._offsets = [float(o) for o in p('carrot_offsets', [0.0, 2.0, -2.0, 4.0, -4.0])] or [0.0]
+        self._offsets = [
+            float(o) for o in p('carrot_offsets', [0.0, 2.0, -2.0, 4.0, -4.0])] or [0.0]
         self._goal_tolerance = float(p('goal_tolerance', 0.5))
         self._goal_line_distance = float(p('goal_line_distance', 2.0))   # TDM-44; <= 0: off
         self._approach_distance = float(p('final_approach_distance', 2.0))
@@ -153,7 +155,8 @@ class LocalPlanner(Node):
         self._spacing = float(p('route_spacing', 0.5))
         self._window = float(p('progress_window', 4.0))
         self._planner_timeout = float(p('planner_timeout', 5.0))
-        rate_hz = float(p('rate_hz', 2.0))   # TDM-36: 2 Hz cleared obstacles better than 1 Hz (TDM-25)
+        # TDM-36: 2 Hz cleared obstacles better than 1 Hz (TDM-25)
+        rate_hz = float(p('rate_hz', 2.0))
         planner_action = p('planner_action', '/compute_path_to_pose')
         route_action = p('route_action', '/compute_shortest_path')
         follow_action = p('follow_action', '/follow_path')
@@ -170,9 +173,9 @@ class LocalPlanner(Node):
         self._scan_stopped = False   # stopped because every scan topic is silent
 
         self._route = None         # Route in map, or None when there is no goal
-        self._goal_gen = 0         # bumped on every new goal / cancel / arrival; stale replies compare it
+        self._goal_gen = 0         # +1 per new goal / cancel / arrival; stale replies compare it
         self._progress = 0.0       # arc length along the route, monotonic
-        self._inflight = None      # the one outstanding ComputePathToPose request (a dict), or None
+        self._inflight = None      # the one pending ComputePathToPose request (a dict), or None
         self._failures = 0         # consecutive planning failures
         self._stop_sent = False    # one empty path per failure streak
         self._ends_at_goal = False   # the path last forwarded ends at the final goal
@@ -197,8 +200,9 @@ class LocalPlanner(Node):
         self.create_timer(1.0 / rate_hz, self._tick)
 
         self.get_logger().info(
-            f'local_planner: {goal_topic} | {goal_node_topic} -> {route_action}; carrot {self._lookahead} m '
-            f'-> {planner_action} ({self._planner_id}) at {rate_hz} Hz -> {plan_topic} (frame {self._map_frame})'
+            f'local_planner: {goal_topic} | {goal_node_topic} -> {route_action}; '
+            f'carrot {self._lookahead} m -> {planner_action} ({self._planner_id}) at {rate_hz} Hz '
+            f'-> {plan_topic} (frame {self._map_frame})'
             + (f' -> {follow_action}' if self._drive else ' [drive:=false, plan only]')
             + f'; final approach {self._approach_distance} m, loop_margin {self._loop_margin} m'
             + f'; stops within {self._goal_tolerance} m of the goal or past its goal line '
@@ -224,7 +228,8 @@ class LocalPlanner(Node):
             (x, y, _), q = self._lookup(self._map_frame, self._robot_frame)
         except TransformException as ex:
             self.get_logger().warning(
-                f'no {self._map_frame}->{self._robot_frame} transform: {ex}', throttle_duration_sec=5.0)
+                f'no {self._map_frame}->{self._robot_frame} transform: {ex}',
+                throttle_duration_sec=5.0)
             return None
         return x, y, quaternion_to_yaw(q)
 
@@ -248,7 +253,8 @@ class LocalPlanner(Node):
         t, q = self._lookup(self._map_frame, frame)
         for ps in path.poses:
             pos, ori = ps.pose.position, ps.pose.orientation
-            (x, y, z), (qx, qy, qz, qw) = transform_pose(t, q, (pos.x, pos.y, pos.z), (ori.x, ori.y, ori.z, ori.w))
+            (x, y, z), (qx, qy, qz, qw) = transform_pose(
+                t, q, (pos.x, pos.y, pos.z), (ori.x, ori.y, ori.z, ori.w))
             m = PoseStamped()
             m.header.stamp = ps.header.stamp
             m.header.frame_id = self._map_frame
@@ -296,7 +302,8 @@ class LocalPlanner(Node):
             else:
                 gx, gy = pos.x, pos.y
         except TransformException as ex:
-            self.get_logger().error(f'ignoring goal in {frame}: no transform to {self._map_frame}: {ex}')
+            self.get_logger().error(
+                f'ignoring goal in {frame}: no transform to {self._map_frame}: {ex}')
             return
         robot = self._robot_xy()
         if robot is None:
@@ -324,7 +331,8 @@ class LocalPlanner(Node):
             if gen == self._goal_gen:
                 self.get_logger().error(f'route to node {node_id} rejected')
             return
-        handle.get_result_async().add_done_callback(lambda f: self._on_route_result(f, gen, node_id))
+        handle.get_result_async().add_done_callback(
+            lambda f: self._on_route_result(f, gen, node_id))
 
     def _on_route_result(self, fut, gen, node_id):
         if gen != self._goal_gen:
@@ -340,7 +348,8 @@ class LocalPlanner(Node):
         try:
             path = self._to_map(path)
         except TransformException as ex:
-            self.get_logger().error(f'cannot move the route to node {node_id} into {self._map_frame}: {ex}')
+            self.get_logger().error(
+                f'cannot move the route to node {node_id} into {self._map_frame}: {ex}')
             self._send_stop('no route')
             return
         points = [(ps.pose.position.x, ps.pose.position.y) for ps in path.poses]
@@ -349,7 +358,8 @@ class LocalPlanner(Node):
     def _on_cancel(self, _msg):
         had_goal = self._route is not None
         self._new_goal()
-        self.get_logger().info('cancel: goal cleared' if had_goal else 'cancel (no goal was active)')
+        self.get_logger().info(
+            'cancel: goal cleared' if had_goal else 'cancel (no goal was active)')
         self._send_stop('cancel')
 
     # ------------------------------------------------------------------ scans (TDM-52)
@@ -435,15 +445,17 @@ class LocalPlanner(Node):
             self._send_stop('goal line crossed')
             return
 
-        approach = in_final_approach(to_goal, self._approach_distance, self._ends_at_goal, self._final_approach)
+        approach = in_final_approach(
+            to_goal, self._approach_distance, self._ends_at_goal, self._final_approach)
         if approach != self._final_approach:
             self._final_approach = approach
             if approach:
-                self._abandon_plan()  # its answer could only replace a path that already ends at the goal
+                # its answer could only replace a path that already ends at the goal
+                self._abandon_plan()
                 self.get_logger().info(
                     f'final approach: {to_goal:.2f} m from the goal (final_approach_distance '
-                    f'{self._approach_distance} m) and the last path ends there; stopped replanning, '
-                    f'the follower finishes it')
+                    f'{self._approach_distance} m) and the last path ends there; '
+                    f'stopped replanning, the follower finishes it')
             else:
                 self.get_logger().warning(
                     f'left the final approach ({to_goal:.2f} m from the goal); replanning')
@@ -458,7 +470,8 @@ class LocalPlanner(Node):
             return
 
         if not self._planner.server_is_ready():
-            self.get_logger().warning('waiting for the planner action server', throttle_duration_sec=5.0)
+            self.get_logger().warning(
+                'waiting for the planner action server', throttle_duration_sec=5.0)
             return
         offset = self._offsets[self._failures % len(self._offsets)]
         s = route.carrot_s(self._progress, self._lookahead, offset)
@@ -477,7 +490,8 @@ class LocalPlanner(Node):
                'carrot': (x, y, s, offset), 'carrot_yaw': yaw, 'robot_yaw': ryaw,
                'progress': self._progress, 'remaining': remaining}
         self._inflight = req
-        self._planner.send_goal_async(goal).add_done_callback(lambda f: self._on_plan_accepted(f, req))
+        self._planner.send_goal_async(goal).add_done_callback(
+            lambda f: self._on_plan_accepted(f, req))
 
     def _abandon_plan(self):
         req, self._inflight = self._inflight, None
@@ -507,13 +521,15 @@ class LocalPlanner(Node):
             code = _PLAN_ERRORS.get(result.error_code, result.error_code)
             detail = f': {result.error_msg}' if result.error_msg else ''
             self._on_plan_failure(
-                f'{_STATUS_NAMES.get(res.status, res.status)}, {code}, {len(result.path.poses)} poses{detail}')
+                f'{_STATUS_NAMES.get(res.status, res.status)}, {code}, '
+                f'{len(result.path.poses)} poses{detail}')
             return
         src = result.path.header.frame_id
         try:
             path = self._to_map(result.path)
         except TransformException as ex:
-            self._on_plan_failure(f'cannot transform the path from {src!r} to {self._map_frame}: {ex}')
+            self._on_plan_failure(
+                f'cannot transform the path from {src!r} to {self._map_frame}: {ex}')
             return
 
         points = [(ps.pose.position.x, ps.pose.position.y) for ps in path.poses]
@@ -523,15 +539,18 @@ class LocalPlanner(Node):
             path.poses = [path.poses[i] for i in keep]
             points = [points[i] for i in keep]
         x, y, s, offset = req['carrot']
-        route_arc = s - req['progress']  # the route's own length to the carrot; a path may need that much
+        # the route's own length to the carrot; a path may need that much
+        route_arc = s - req['progress']
         if self._loop_margin > 0.0 and is_loop(
                 points, req['robot_yaw'], req['carrot_yaw'], self._loop_margin, route_arc):
             (x0, y0), (x1, y1) = points[0], points[-1]
             turn = math.degrees(angle_difference(req['carrot_yaw'], req['robot_yaw']))
             self._on_plan_failure(
-                f'loop: {path_length(points):.1f} m path to a carrot {math.hypot(x1 - x0, y1 - y0):.1f} m away '
-                f'({route_arc:.1f} m along the route), {loop_excess(points, route_arc):.1f} m more than needed '
-                f'> loop_margin {self._loop_margin} m; carrot heading {turn:+.0f} deg off the robot heading')
+                f'loop: {path_length(points):.1f} m path to a carrot '
+                f'{math.hypot(x1 - x0, y1 - y0):.1f} m away ({route_arc:.1f} m along the route), '
+                f'{loop_excess(points, route_arc):.1f} m more than needed '
+                f'> loop_margin {self._loop_margin} m; '
+                f'carrot heading {turn:+.0f} deg off the robot heading')
             return
 
         recovered = self._failures > 0
@@ -543,8 +562,9 @@ class LocalPlanner(Node):
         if forwarded:
             self._ends_at_goal = self._route.reaches_end(s)
 
-        # The first plan of a goal and the first after a failure streak always log; the rest every 5 s.
-        # (rclpy refuses a call site whose throttle changes between calls, hence the manual throttle.)
+        # The first plan of a goal and the first after a failure streak always log; the rest
+        # every 5 s. (rclpy refuses a call site whose throttle changes between calls, hence the
+        # manual throttle.)
         now = time.monotonic()
         if not (self._log_next_plan or recovered or now - self._last_plan_log >= 5.0):
             return
@@ -553,9 +573,11 @@ class LocalPlanner(Node):
         a, b = result.path.poses[0].pose.position, result.path.poses[-1].pose.position
         c, d = path.poses[0].pose.position, path.poses[-1].pose.position
         self.get_logger().info(
-            f'plan {self._plans}: {len(path.poses)} poses, {src} ({a.x:.2f}, {a.y:.2f})..({b.x:.2f}, {b.y:.2f}) '
-            f'-> {self._map_frame} ({c.x:.2f}, {c.y:.2f})..({d.x:.2f}, {d.y:.2f}); carrot ({x:.2f}, {y:.2f}) '
-            f'offset {offset:+.1f} m, progress {req["progress"]:.1f}, remaining {req["remaining"]:.1f} m'
+            f'plan {self._plans}: {len(path.poses)} poses, '
+            f'{src} ({a.x:.2f}, {a.y:.2f})..({b.x:.2f}, {b.y:.2f}) '
+            f'-> {self._map_frame} ({c.x:.2f}, {c.y:.2f})..({d.x:.2f}, {d.y:.2f}); '
+            f'carrot ({x:.2f}, {y:.2f}) offset {offset:+.1f} m, '
+            f'progress {req["progress"]:.1f}, remaining {req["remaining"]:.1f} m'
             + (f', {dropped} duplicate poses dropped' if dropped else '')
             + (' [ends at the goal]' if self._route.reaches_end(s) else '')
             + (' [recovered]' if recovered else ''))
@@ -564,7 +586,8 @@ class LocalPlanner(Node):
         self._failures += 1
         nxt = self._offsets[self._failures % len(self._offsets)]
         self.get_logger().warning(
-            f'planning failed ({reason}); {self._failures} in a row, next carrot offset {nxt:+.1f} m'
+            f'planning failed ({reason}); {self._failures} in a row, '
+            f'next carrot offset {nxt:+.1f} m'
             + self._scan_report())
         if not self._stop_sent:
             self._stop_sent = True
@@ -579,7 +602,8 @@ class LocalPlanner(Node):
         self._plan_pub.publish(empty)
         if self._drive:
             self._send_follow(empty, f'stop ({why})')
-        self.get_logger().info(f'stop: empty path sent ({why})' + ('' if self._drive else ' [drive:=false]'))
+        self.get_logger().info(
+            f'stop: empty path sent ({why})' + ('' if self._drive else ' [drive:=false]'))
 
     def _send_follow(self, path, what):
         """Send ``path`` to the follower; False if there is no follower server to send it to."""
