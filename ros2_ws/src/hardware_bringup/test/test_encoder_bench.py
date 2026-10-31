@@ -1,6 +1,5 @@
-import pytest
-
 from hardware_bringup.encoder_bench import settled, summarize, tick_delta
+import pytest
 
 
 def test_rollover_both_directions():

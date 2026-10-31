@@ -2,8 +2,8 @@ import os
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
 import serial
+from std_msgs.msg import String
 
 # The motor-controller board's udev symlink (deployment/udev/99-motor.rules). Never a raw
 # /dev/ttyUSBn: the RPLidar C1 is one too, and plug order decides which is ttyUSB0.
@@ -47,7 +47,7 @@ class WheelEncoderNode(Node):
             self.publisher_.publish(msg)
         else:
             msg = String()
-            msg.data = "No response received"
+            msg.data = 'No response received'
             self.publisher_.publish(msg)
 
     def destroy_node(self):

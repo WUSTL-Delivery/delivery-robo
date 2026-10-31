@@ -4,14 +4,15 @@ ROS2 WebSocket Client for Robot Delivery System
 Connects to the authoritative server and handles order matching
 """
 
-import rclpy
-from rclpy.node import Node
-import websocket
 import json
 import threading
 import time
-from std_msgs.msg import String
+
 from geometry_msgs.msg import PoseStamped
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import websocket
 
 
 class DeliveryRobotClient(Node):
@@ -28,7 +29,7 @@ class DeliveryRobotClient(Node):
         # WebSocket connection
         self.ws = None
         self.connected = False
-        self.status = "offline"  # offline, online, ready, delivery
+        self.status = 'offline'  # offline, online, ready, delivery
 
         # Publishers
         self.status_pub = self.create_publisher(String, 'robot/status', 10)
@@ -79,7 +80,7 @@ class DeliveryRobotClient(Node):
         self.get_logger().info('WebSocket connected!')
 
         # Send online status
-        self.send_status_update("online")
+        self.send_status_update('online')
 
     def on_message(self, ws, message):
         """Handle incoming WebSocket messages"""
@@ -105,7 +106,7 @@ class DeliveryRobotClient(Node):
         """Called when WebSocket connection is closed"""
         self.get_logger().warn(f'WebSocket closed: {close_status_code} - {close_msg}')
         self.connected = False
-        self.status = "offline"
+        self.status = 'offline'
 
         # Attempt to reconnect after 5 seconds
         self.get_logger().info('Attempting to reconnect in 5 seconds...')
@@ -121,10 +122,10 @@ class DeliveryRobotClient(Node):
         self.status = status
 
         message = {
-            "type": "update",
-            "payload": {
-                "status": status,
-                "robot_id": self.robot_id
+            'type': 'update',
+            'payload': {
+                'status': status,
+                'robot_id': self.robot_id
             }
         }
 
@@ -146,7 +147,7 @@ class DeliveryRobotClient(Node):
         self.get_logger().info(f'🤖 Matched with Order #{order_id}!')
 
         # Update status
-        self.status = "delivery"
+        self.status = 'delivery'
 
         # Publish order to ROS topic
         order_msg = String()
@@ -169,7 +170,7 @@ class DeliveryRobotClient(Node):
             self.get_logger().info(f'✅ Delivery complete for Order #{order_id}')
 
             # Send ready status to get next order
-            self.send_status_update("ready")
+            self.send_status_update('ready')
 
         except Exception as e:
             self.get_logger().error(f'Error handling delivery complete: {e}')
@@ -187,7 +188,7 @@ class DeliveryRobotClient(Node):
         self.status_pub.publish(status_msg)
 
         # If online but not matched, send ready status periodically
-        if self.connected and self.status == "online":
+        if self.connected and self.status == 'online':
             # Could send "ready" status here if you want the robot to be available
             # self.send_status_update("ready")
             pass
@@ -196,7 +197,7 @@ class DeliveryRobotClient(Node):
         """Cleanup on shutdown"""
         self.get_logger().info('Shutting down robot client...')
         if self.connected:
-            self.send_status_update("shutdown")
+            self.send_status_update('shutdown')
             time.sleep(0.5)  # Give time for message to send
             self.ws.close()
 

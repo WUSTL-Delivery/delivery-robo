@@ -1,20 +1,20 @@
 """Exercise obstacle geometry, invalid returns, pairing and model alignment."""
 
-import math
-import xml.etree.ElementTree as ET
 from dataclasses import replace
+import math
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
-import numpy as np
-import pytest
 from my_bringup.scan_fusion_core import (
-    ScanGrid,
-    ScanSample,
     closest_sample,
     fuse_hits,
     is_fresh,
     project_hits,
+    ScanGrid,
+    ScanSample,
 )
+import numpy as np
+import pytest
 
 
 def scan(ranges, angle_min=0.0, angle_increment=math.pi / 2, stamp_ns=1_000_000_000):

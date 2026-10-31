@@ -1,7 +1,11 @@
+from adafruit_bno08x import (
+    BNO_REPORT_ACCELEROMETER,
+    BNO_REPORT_GYROSCOPE,
+    BNO_REPORT_ROTATION_VECTOR,
+)
+from adafruit_bno08x.i2c import BNO08X_I2C
 import board
 import busio
-from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR, BNO_REPORT_ACCELEROMETER, BNO_REPORT_GYROSCOPE
-from adafruit_bno08x.i2c import BNO08X_I2C
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
@@ -18,7 +22,7 @@ class ImuNode(Node):
         self.publisher_ = self.create_publisher(Imu, 'imu/data', 10)
 
         self.timer = self.create_timer(1.0 / rate_hz, self.timer_callback)
-        self.get_logger().info(f"IMU node publishing imu/data at {rate_hz:g} Hz")
+        self.get_logger().info(f'IMU node publishing imu/data at {rate_hz:g} Hz')
 
         i2c = busio.I2C(board.SCL, board.SDA)
         self.bno = BNO08X_I2C(i2c)

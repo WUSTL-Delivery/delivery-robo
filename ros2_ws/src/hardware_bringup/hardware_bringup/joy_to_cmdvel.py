@@ -21,12 +21,11 @@ the robot stops and stays stopped: without a joystick nobody can override the au
 """
 import time
 
-import rclpy
 from geometry_msgs.msg import Twist
+from hardware_bringup.ackermann import DriveGeometry, yaw_rate_from_steering
+import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
-
-from hardware_bringup.ackermann import DriveGeometry, yaw_rate_from_steering
 
 
 def _clamp_unit(x):

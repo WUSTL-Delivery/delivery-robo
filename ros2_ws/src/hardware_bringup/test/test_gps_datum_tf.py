@@ -5,10 +5,14 @@ import pytest
 
 pytest.importorskip('rclpy')  # gps_datum_tf is a node module
 
-from hardware_bringup.gps_datum_tf import (  # noqa: E402
-    PLANNER_UTM_ORIGIN_X, PLANNER_UTM_ORIGIN_Y, datum_transform_local_enu, datum_transform_utm,
-    geodetic_to_enu)
-from hardware_bringup.utm import WGS84_A, WGS84_F, grid_convergence, latlon_to_utm  # noqa: E402
+from hardware_bringup.gps_datum_tf import (  # noqa: E402, I100
+    datum_transform_local_enu,
+    datum_transform_utm,
+    geodetic_to_enu,
+    PLANNER_UTM_ORIGIN_X,
+    PLANNER_UTM_ORIGIN_Y,
+)
+from hardware_bringup.utm import grid_convergence, latlon_to_utm, WGS84_A, WGS84_F  # noqa: E402
 
 # delivery-autonomy washu.world <spherical_coordinates>: lat, lon, elevation
 WORLD_ORIGIN = (38.64817527, -90.30128152, 0.0)

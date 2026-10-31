@@ -4,8 +4,7 @@ from typing import List
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile
-from rclpy.qos import ReliabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Imu
 
 
@@ -50,7 +49,7 @@ class ImuCovarianceEstimator(Node):
         )
         self.get_logger().info(
             f"Listening on '{self.topic}'. "
-            f"Warmup: {self.warmup_samples} samples, capture: {self.target_samples} samples."
+            f'Warmup: {self.warmup_samples} samples, capture: {self.target_samples} samples.'
         )
 
     def imu_callback(self, msg: Imu) -> None:
@@ -60,7 +59,7 @@ class ImuCovarianceEstimator(Node):
         self.messages_seen += 1
         if self.messages_seen <= self.warmup_samples:
             if self.messages_seen % max(1, self.warmup_samples // 5) == 0:
-                self.get_logger().info(f"Warmup {self.messages_seen}/{self.warmup_samples}...")
+                self.get_logger().info(f'Warmup {self.messages_seen}/{self.warmup_samples}...')
             return
 
         qx = msg.orientation.x
@@ -83,7 +82,7 @@ class ImuCovarianceEstimator(Node):
 
         captured = len(self.linear_accel_samples)
         if captured % max(1, self.target_samples // 10) == 0:
-            self.get_logger().info(f"Captured {captured}/{self.target_samples} samples...")
+            self.get_logger().info(f'Captured {captured}/{self.target_samples} samples...')
 
         if captured >= self.target_samples:
             self.finished = True
@@ -133,7 +132,7 @@ class ImuCovarianceEstimator(Node):
         self.get_logger().info(f'linear_acceleration_covariance: {linear_flat}')
         self.get_logger().info('Paste these arrays into your IMU publisher node.')
 
-        with open("imu_covariance_results.txt", "w") as file:
+        with open('imu_covariance_results.txt', 'w') as file:
             file.write(f'orientation_covariance: {orientation_flat}')
             file.write(f'angular_velocity_covariance: {angular_flat}')
             file.write(f'linear_acceleration_covariance: {linear_flat}')

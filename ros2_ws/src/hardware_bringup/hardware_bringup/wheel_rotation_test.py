@@ -3,11 +3,11 @@
 Use wheel_rotation_test.launch.py: its isolated mapper interprets all-zero Joy as
 stop. This is NOT compatible with autonomy-mode enable-button release semantics.
 """
+from collections import deque
 import json
 import math
 import re
 import time
-from collections import deque
 
 from hardware_bringup.encoder_bench import settled, tick_delta
 
@@ -83,9 +83,9 @@ class RotationTrial:
 
 def main(args=None):
     import rclpy
-    from rclpy.node import Node
     from rclpy.executors import ExternalShutdownException
-    from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, qos_profile_sensor_data
+    from rclpy.node import Node
+    from rclpy.qos import DurabilityPolicy, qos_profile_sensor_data, QoSProfile, ReliabilityPolicy
     from sensor_msgs.msg import Joy
     from std_msgs.msg import Int64, String
 

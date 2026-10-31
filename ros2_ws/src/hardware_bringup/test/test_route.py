@@ -3,10 +3,7 @@
 stopping at the goal line."""
 import math
 
-import pytest
-
 from hardware_bringup.route import (
-    Route,
     angle_difference,
     crossed_goal_line,
     cumulative_lengths,
@@ -20,9 +17,11 @@ from hardware_bringup.route import (
     quaternion_to_yaw,
     resample,
     rotate_vector,
+    Route,
     transform_pose,
     yaw_to_quaternion,
 )
+import pytest
 
 
 def _route_on_polyline(p, polyline, tol=1e-9):

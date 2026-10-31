@@ -8,9 +8,9 @@ import pytest
 
 rclpy = pytest.importorskip('rclpy')
 
-import my_bringup.scan_fusion as fusion  # noqa: E402
-from diagnostic_msgs.msg import DiagnosticStatus  # noqa: E402
+from diagnostic_msgs.msg import DiagnosticStatus  # noqa: E402, I100
 from geometry_msgs.msg import TransformStamped  # noqa: E402
+import my_bringup.scan_fusion as fusion  # noqa: E402
 from rclpy.time import Time  # noqa: E402
 from sensor_msgs.msg import LaserScan  # noqa: E402
 

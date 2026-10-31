@@ -171,9 +171,9 @@ def generate_launch_description():
             description='run against the delivery-autonomy Gazebo sim instead of the robot'),
         DeclareLaunchArgument(
             'nav2', default_value='false', choices=['true', 'false'],
-            description="Nav2 runs and publishes /global_costmap/costmap (master_launch passes its own "
+            description='Nav2 runs and publishes /global_costmap/costmap (master_launch passes its own '
                         "nav2). Sets the controller's use_costmap: slow down and stop for costmap "
-                        "obstacles. false = the controller ignores the costmap"),
+                        'obstacles. false = the controller ignores the costmap'),
         DeclareLaunchArgument(
             'planner_cache_dir', default_value='~/.cache/delivery_autonomy',
             description='working directory of global_planner, holds its osmnx ./cache'),

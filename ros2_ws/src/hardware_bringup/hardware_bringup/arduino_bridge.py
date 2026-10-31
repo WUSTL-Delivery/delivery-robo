@@ -26,38 +26,37 @@ Safety behaviour:
   the Arduino during its ~2 s auto-reset after the port opens;
 * on shutdown a final stop command is written.
 """
+from collections import deque
 import math
 import os
 import re
 import threading
 import time
-from collections import deque
 
-import rclpy
-import serial
 from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry
-from rclpy.node import Node
-from rclpy.time import Time
-from std_msgs.msg import Float64
-
 from hardware_bringup.ackermann import (
+    check_finite,
     DriveGeometry,
     DriveMap,
-    ServoMap,
-    check_finite,
     odom_from_ticks,
     pwm_from_speed,
     servo_degrees,
+    ServoMap,
     speed_from_pwm,
     steering_from_twist,
 )
 from hardware_bringup.serial_protocol import (
-    ENCODER_QUERY,
-    LineSplitter,
     drive_command,
+    ENCODER_QUERY,
     is_error_response,
+    LineSplitter,
 )
+from nav_msgs.msg import Odometry
+import rclpy
+from rclpy.node import Node
+from rclpy.time import Time
+import serial
+from std_msgs.msg import Float64
 
 DEFAULT_PORT = '/dev/motor'
 MOTOR_RULES = '/etc/udev/rules.d/99-motor.rules'

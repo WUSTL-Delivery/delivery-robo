@@ -93,24 +93,9 @@ blocks a callback, and TF is read with the latest-available lookup.
 import math
 import time
 
-import rclpy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import ComputePathToPose
-from nav_msgs.msg import Path
-from rclpy.action import ActionClient
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
-from rclpy.parameter import Parameter
-from rclpy.qos import qos_profile_sensor_data
-from rclpy.time import Time
-from sensor_msgs.msg import LaserScan
-from shared_types.action import ComputePath, FollowPath
-from std_msgs.msg import Empty, Int64
-from tf2_ros import Buffer, TransformException, TransformListener
-
 from hardware_bringup.route import (
-    Route,
     angle_difference,
     crossed_goal_line,
     drop_duplicate_points,
@@ -121,10 +106,24 @@ from hardware_bringup.route import (
     loop_excess,
     path_length,
     quaternion_to_yaw,
+    Route,
     transform_pose,
     yaw_to_quaternion,
 )
 from hardware_bringup.sensor_watch import SensorWatch
+from nav2_msgs.action import ComputePathToPose
+from nav_msgs.msg import Path
+import rclpy
+from rclpy.action import ActionClient
+from rclpy.executors import ExternalShutdownException
+from rclpy.node import Node
+from rclpy.parameter import Parameter
+from rclpy.qos import qos_profile_sensor_data
+from rclpy.time import Time
+from sensor_msgs.msg import LaserScan
+from shared_types.action import ComputePath, FollowPath
+from std_msgs.msg import Empty, Int64
+from tf2_ros import Buffer, TransformException, TransformListener
 
 _STATUS_NAMES = {
     getattr(GoalStatus, n): n[len('STATUS_'):].lower() for n in dir(GoalStatus) if n.startswith('STATUS_')

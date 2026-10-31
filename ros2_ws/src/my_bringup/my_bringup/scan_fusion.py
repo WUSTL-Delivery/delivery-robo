@@ -23,30 +23,29 @@ live inputs is logged once, and the diagnostics carry lidar_live, camera_live an
 output_mode.
 """
 
+from collections import deque
 import math
 import time
-from collections import deque
 
-import numpy as np
-import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from my_bringup.depth_obstacles import transform_matrix
+from my_bringup.scan_fusion_core import (
+    closest_sample,
+    fuse_hits,
+    is_fresh,
+    project_hits,
+    ScanGrid,
+    ScanSample,
+)
+import numpy as np
 from rcl_interfaces.msg import ParameterDescriptor
+import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformException, TransformListener
-
-from my_bringup.depth_obstacles import transform_matrix
-from my_bringup.scan_fusion_core import (
-    ScanGrid,
-    ScanSample,
-    closest_sample,
-    fuse_hits,
-    is_fresh,
-    project_hits,
-)
 
 
 class ScanFusion(Node):

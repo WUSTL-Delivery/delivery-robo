@@ -1,6 +1,5 @@
+from hardware_bringup.wheel_rotation_test import encoder_count, RotationTrial
 import pytest
-
-from hardware_bringup.wheel_rotation_test import RotationTrial, encoder_count
 
 
 @pytest.mark.parametrize('payload,expected', [(' 123\r\n', 123), ('-42', -42), (0, 0)])

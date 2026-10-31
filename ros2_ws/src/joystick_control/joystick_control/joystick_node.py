@@ -1,10 +1,10 @@
 import os
+import time
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
 import serial
-import time
 
 # The motor-controller board's udev symlink (deployment/udev/99-motor.rules). Never a raw
 # /dev/ttyUSBn: the RPLidar C1 is one too, and plug order decides which is ttyUSB0.
@@ -63,7 +63,7 @@ class JoystickNode(Node):
             0.1, self.timer_callback
         )
 
-        self.get_logger().info("Joystick control node (Python) started.")
+        self.get_logger().info('Joystick control node (Python) started.')
 
     def open_serial(self):
         if self.ser is not None:
@@ -108,11 +108,11 @@ class JoystickNode(Node):
             servo_angle = self.STEER_ORIGIN + steer * self.MAX_STEER
 
             if self.verbose:
-                self.get_logger().info(f"Throttle: {throttle:.2f} | Steer: {steer:.2f}")
-                self.get_logger().info(f"PWM: {pwm:.2f} | Angle: {servo_angle:.2f}")
+                self.get_logger().info(f'Throttle: {throttle:.2f} | Steer: {steer:.2f}')
+                self.get_logger().info(f'PWM: {pwm:.2f} | Angle: {servo_angle:.2f}')
 
             if self.ser and self.ser.is_open:
-                command = f"m {pwm:.2f} {servo_angle:.2f}\r"
+                command = f'm {pwm:.2f} {servo_angle:.2f}\r'
                 try:
                     self.ser.write(command.encode())
                 except Exception as e:

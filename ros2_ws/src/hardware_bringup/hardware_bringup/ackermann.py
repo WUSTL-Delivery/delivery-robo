@@ -13,8 +13,8 @@ Conventions
   while stopped; ``joy_to_cmdvel`` applies the same floor when encoding, so the round trip
   is exact (see ``test_joystick_roundtrip_recovers_steering``).
 """
-import math
 from dataclasses import dataclass
+import math
 
 
 @dataclass(frozen=True)

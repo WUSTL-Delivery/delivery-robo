@@ -44,14 +44,13 @@ high. Nothing in the stack reads it, but RViz shows the robot floating.
 """
 import math
 
-import rclpy
 from geometry_msgs.msg import TransformStamped
+from hardware_bringup.utm import grid_convergence, latlon_to_utm, WGS84_A, WGS84_F
+import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import NavSatFix
 from tf2_msgs.msg import TFMessage
-
-from hardware_bringup.utm import WGS84_A, WGS84_F, grid_convergence, latlon_to_utm
 
 # global_planner.py: true_origin_x = 734765 + 91.46309417473815, true_origin_y = 4281212 - 24.993696585102057
 PLANNER_UTM_ORIGIN_X = 734856.4630941747
