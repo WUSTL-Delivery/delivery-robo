@@ -37,7 +37,7 @@ arduino_bridge:
     pwm_limit: 110                # joystick_node's MAX_PWM (firmware accepts up to 255)
     gear_ratio: 0.833333333333    # 10-tooth motor gear / 12-tooth wheel-axle gear; AS5047P reads the motor shaft
     wheel_radius_m: 0.1016        # 4 in wheel radius (user-reported; tape-measure to confirm if odom drifts)
-    encoder_direction: 1.0        # 1 or -1; flip if /wheel_ticks grows while the wheel moves in reverse (UNVERIFIED, check on bench)
+    encoder_direction: -1.0        # 1 or -1; flip if /wheel_ticks grows while the wheel moves in reverse (UNVERIFIED, check on bench)
 
 joy_to_cmdvel:
   ros__parameters:
