@@ -38,10 +38,10 @@ void runCommand() {
     case SET_DRIVE_PWM: // "m val1 val2"
       setDriveSpeed((int)arg1);
       setTurnAngle((int)arg2);
-      Serial.print("Parsed - Vel: ");
-      Serial.print((int)arg1);
-      Serial.print(" | Angle: ");
-      Serial.println((int)arg2);
+      // Serial.print("Parsed - Vel: ");
+      // Serial.print((int)arg1);
+      // Serial.print(" | Angle: ");
+      // Serial.println((int)arg2);
 
       break;
 
@@ -59,6 +59,7 @@ void runCommand() {
 
     case GET_ENCODER: // "e"
       Serial.println(getEncoder());
+      // Serial.println(42);
       break;
     
     case GET_BATTERY: // "b"
@@ -110,10 +111,10 @@ void processBuffer() {
       arg1 = atof(argv1);
       arg2 = atof(argv2);
 
-      Serial.print("ddd Parsed - Vel: ");
-      Serial.print(arg1);
-      Serial.print(" | ddd Angle: ");
-      Serial.println(arg2);
+      // Serial.print("ddd Parsed - Vel: ");
+      // Serial.print(arg1);
+      // Serial.print(" | ddd Angle: ");
+      // Serial.println(arg2);
       if (cmd != '\0') runCommand();
       resetCommand();
     }

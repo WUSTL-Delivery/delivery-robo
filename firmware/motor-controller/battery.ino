@@ -1,12 +1,8 @@
-// Battery Voltage Monitor with I2C LCD
-// Reads battery voltage through voltage divider (2x 10K resistors)
-// Displays on 16x2 LCD and alerts if voltage is low
+// ina219 motor driver
 
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
+#include <Adafruit_INA219.h>
 
-// Initialize LCD (address, columns, rows)
-LiquidCrystal_I2C lcd(I2C_ADDR, 16, 2);
+Adafruit_INA219 ina219;
 
 unsigned long lastUpdate = 0;
 
@@ -22,42 +18,12 @@ void batteryUpdate() {
 }
 
 void batteryInit() {
-  // Initialize LCD
-  lcd.init();
-  lcd.backlight();
-  lcd.clear();
-  
-  // Initialize LED pin
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
-  
-  // Display startup message
-  lcd.setCursor(0, 0);
-  lcd.print("Battery Monitor");
-  lcd.setCursor(0, 1);
-  lcd.print("Starting...");
-  delay(2000);
-  lcd.clear();
+  ina219.begin()
 }
 
 // Read voltage with averaging for stability
 float readVoltage() {
-  long sum = 0;
-  
-  // Take multiple samples and average
-  for (int i = 0; i < SAMPLES; i++) {
-    sum += analogRead(ANALOG_PIN);
-    delay(SAMPLE_DELAY);
-  }
-  
-  float average = sum / (float)SAMPLES;
-  
-  // Convert to voltage
-  // Arduino ADC: 0-1023 represents 0-5V
-  // Multiply by divider ratio to get actual battery voltage
-  float voltage = (average * 5.0 / 1023.0) * VOLTAGE_DIVIDER;
-  
-  return voltage;
+  return ina219.getBusVoltage_V() + (ina219.getShuntVoltage_mV() / 1000);
 }
 
 // Display voltage on LCD
