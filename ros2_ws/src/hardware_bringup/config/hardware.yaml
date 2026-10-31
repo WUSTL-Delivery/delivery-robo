@@ -50,7 +50,7 @@ joy_to_cmdvel:
                                   # (button 9 is a stick click there). VERIFY with `ros2 topic echo /joy`
     require_enable_button: true   # false = stick always wins over autonomy (autonomy never drives)
     joy_timeout: 1.0              # s without /joy before the joystick counts as gone
-    require_joystick: true        # no joystick -> publish zeros at top priority (robot held stopped)
+    require_joystick: false       # no joystick -> publish zeros at top priority (robot held stopped)
     publish_rate: 20.0
 
 gps_datum_tf:
