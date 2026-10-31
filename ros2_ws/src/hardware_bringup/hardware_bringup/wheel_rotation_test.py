@@ -92,7 +92,10 @@ def main(args=None):
     class WheelRotationTest(Node):
         def __init__(self):
             super().__init__('wheel_rotation_test')
-            p = lambda name, default: self.declare_parameter(name, default).value
+
+            def p(name, default):
+                return self.declare_parameter(name, default).value
+
             target = p('ticks_per_rotation', 0)  # Never guess a physical calibration.
             direction = p('encoder_direction', 1)
             self.throttle = float(p('throttle', .1))
@@ -151,8 +154,8 @@ def main(args=None):
         def status(self):
             state = (self.trial.state, self.trial.reason)
             if state != self.last_status:
-                data = dict(state=self.trial.state, reason=self.trial.reason,
-                            net_ticks=self.trial.net_ticks, target_ticks=self.trial.target)
+                data = {'state': self.trial.state, 'reason': self.trial.reason,
+                        'net_ticks': self.trial.net_ticks, 'target_ticks': self.trial.target}
                 self.status_pub.publish(String(data=json.dumps(data)))
                 self.get_logger().info(json.dumps(data))
                 self.last_status = state
