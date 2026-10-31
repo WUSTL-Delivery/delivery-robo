@@ -11,7 +11,7 @@ setup(
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml', 'README.md']),
+        ('share/' + package_name, ['package.xml', 'README.md', 'ENCODER_TESTING.md']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
@@ -28,6 +28,8 @@ setup(
             'joy_to_cmdvel = hardware_bringup.joy_to_cmdvel:main',
             'gps_datum_tf = hardware_bringup.gps_datum_tf:main',
             'bench_mppi = hardware_bringup.bench_mppi:main',
+            'encoder_bench = hardware_bringup.encoder_bench:main',
+            'wheel_rotation_test = hardware_bringup.wheel_rotation_test:main',
         ],
     },
 )
