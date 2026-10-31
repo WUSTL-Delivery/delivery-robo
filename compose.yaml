@@ -1,0 +1,31 @@
+# dev: development container for laptops. robot: the runtime the Pi runs. See docker/README.md.
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+      args:
+        UID: ${HOST_UID:-1000}
+        GID: ${HOST_GID:-1000}
+    image: delivery-robo-dev
+    volumes:
+      - .:/home/dev/delivery-robo
+    command: sleep infinity
+
+  robot:
+    image: ghcr.io/wustl-delivery/delivery-robo:${ROBOT_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: runtime
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+    network_mode: host  # DDS discovery with laptops on the same network; real hostname and IPs
+    ipc: host
+    privileged: true    # hot-plugged serial and USB devices (lidar, motor board, RealSense, u-blox)
+    volumes:
+      - /dev:/dev
+      - /etc/udev/rules.d:/etc/udev/rules.d:ro  # the nodes' "udev rule not installed" hints
+      - ./deployment:/repo/deployment:ro
+    restart: unless-stopped

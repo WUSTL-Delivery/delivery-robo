@@ -66,6 +66,8 @@ def _ips():
 
 
 def _git_sha():
+    if os.environ.get('GIT_SHA'):  # baked into the runtime image, which has no .git
+        return os.environ['GIT_SHA']
     try:
         return subprocess.run(
             ['git', '-C', REPO, 'rev-parse', '--short', 'HEAD'],

@@ -48,3 +48,6 @@ ament_cmake_core/environment_hooks/
 
 # macOS
 .DS_Store
+
+# docker compose per-machine settings (ROBOT_TAG)
+.env
