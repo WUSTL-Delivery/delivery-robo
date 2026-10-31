@@ -34,7 +34,9 @@ VS Code: "Dev Containers: Reopen in Container" uses `.devcontainer/devcontainer.
 ## Running on the Pi
 
 The Pi pulls a published image; it does not build. Pin the tag you run in `.env` next to
-`compose.yaml` (gitignored), e.g. `ROBOT_TAG=5cdef1e`, then:
+`compose.yaml` (gitignored): the first 7 characters of the commit, e.g. `ROBOT_TAG=91b6ea5`
+(`git rev-parse --short=7 HEAD`). While the package is private, the Pi needs
+`docker login ghcr.io` with a token that has `read:packages`. Then:
 
 ```sh
 docker compose pull robot
@@ -52,13 +54,17 @@ RealSense, u-blox, I2C, joystick), and restarts unless stopped. The udev rules
 
 ## Publishing an image
 
-Multi-arch (`linux/arm64` for the Pi, `linux/amd64` for laptops and CI), tagged with the commit:
+`.github/workflows/image.yml` publishes on every push that changes the image's inputs (and from
+the Actions tab once it is on `main`): `linux/arm64` and `linux/amd64` built on native runners,
+tagged with the 7-character commit, plus `latest` from `main`.
+
+By hand (needs package rights in the WUSTL-Delivery org; amd64 is emulated on an arm Mac):
 
 ```sh
 docker login ghcr.io
 docker buildx build -f docker/Dockerfile --target runtime --platform linux/arm64,linux/amd64 \
-  --build-arg GIT_SHA=$(git rev-parse --short HEAD) \
-  -t ghcr.io/wustl-delivery/delivery-robo:$(git rev-parse --short HEAD) --push .
+  --build-arg GIT_SHA=$(git rev-parse --short=7 HEAD) \
+  -t ghcr.io/wustl-delivery/delivery-robo:$(git rev-parse --short=7 HEAD) --push .
 ```
 
 ## Bumping the pins
