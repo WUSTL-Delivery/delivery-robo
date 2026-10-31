@@ -21,11 +21,14 @@ def generate_launch_description():
         DeclareLaunchArgument('port', description='Arduino /dev/serial/by-id/... path'),
         DeclareLaunchArgument('throttle', default_value='0.1'),
         DeclareLaunchArgument('encoder_direction', default_value='1'),
+        DeclareLaunchArgument('max_run_seconds', default_value='10.0',
+                              description='Trial stops after this long even if the count never reaches the target'),
         DeclareLaunchArgument('hardware_params', default_value=os.path.join(share, 'config', 'hardware.yaml')),
         Node(package='hardware_bringup', executable='wheel_rotation_test', output='screen',
              parameters=[{'ticks_per_rotation': value('ticks_per_rotation', int),
                           'encoder_direction': value('encoder_direction', int),
-                          'throttle': value('throttle', float), 'max_run_seconds': 5.0}]),
+                          'throttle': value('throttle', float),
+                          'max_run_seconds': value('max_run_seconds', float)}]),
         # A private, explicitly bounded latch allows one Joy message to drive a trial.
         # All-zero Joy is a real zero command because enable-button gating is OFF
         # here only. No changes are made to the normal autonomy/manual configuration.
@@ -35,7 +38,7 @@ def generate_launch_description():
                  'axis_throttle': 1, 'axis_steer': 0,
                  'invert_throttle': False, 'invert_steer': False,
                  'max_speed': 1.5, 'require_enable_button': False,
-                 'require_joystick': True, 'joy_timeout': 5.0,
+                 'require_joystick': True, 'joy_timeout': value('max_run_seconds', float),
              }]),
         Node(package='twist_mux', executable='twist_mux', name='twist_mux', output='screen',
              parameters=[os.path.join(share, 'config', 'twist_mux.yaml')],
@@ -47,5 +50,9 @@ def generate_launch_description():
                  'port': value('port', str), 'cmd_vel_topic': '/encoder_test/cmd_vel_out',
                  'executed_topic': '/encoder_test/cmd_vel_executed',
                  'odom_topic': '/encoder_test/odom', 'ticks_topic': '/wheel_ticks',
-             }]),
+             }],
+             # hardware.yaml's arduino_bridge section beats the overrides above, so remap.
+             remappings=[('/cmd_vel_out', '/encoder_test/cmd_vel_out'),
+                         ('/cmd_vel_executed', '/encoder_test/cmd_vel_executed'),
+                         ('/odom', '/encoder_test/odom')]),
     ])
