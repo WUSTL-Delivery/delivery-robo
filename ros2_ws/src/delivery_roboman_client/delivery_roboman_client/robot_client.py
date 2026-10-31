@@ -8,7 +8,6 @@ import json
 import threading
 import time
 
-from geometry_msgs.msg import PoseStamped
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String

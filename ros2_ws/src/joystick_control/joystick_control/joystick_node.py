@@ -1,5 +1,4 @@
 import os
-import time
 
 import rclpy
 from rclpy.node import Node
@@ -102,7 +101,7 @@ class JoystickNode(Node):
             # Original C++ node also reads a button, though it doesn't use it.
             # Button 9 is typically "Start" or "Options" on many controllers, but it's labeled "A" in the comment.
             if len(msg.buttons) > 9:
-                a_button = msg.buttons[9]
+                a_button = msg.buttons[9]  # noqa: F841
 
             pwm = throttle * self.MAX_PWM
             servo_angle = self.STEER_ORIGIN + steer * self.MAX_STEER
