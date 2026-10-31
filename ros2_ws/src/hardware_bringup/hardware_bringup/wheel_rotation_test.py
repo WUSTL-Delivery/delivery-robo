@@ -1,4 +1,5 @@
-"""Publish ONE small Joy command, stop at a measured encoder rotation threshold.
+"""
+Publish ONE small Joy command, stop at a measured encoder rotation threshold.
 
 Use wheel_rotation_test.launch.py: its isolated mapper interprets all-zero Joy as
 stop. This is NOT compatible with autonomy-mode enable-button release semantics.

@@ -1,4 +1,5 @@
-"""Run fusion next to master_launch.py: /scan_filtered + /camera/scan -> /scan_fused.
+"""
+Run fusion next to master_launch.py: /scan_filtered + /camera/scan -> /scan_fused.
 
 For a stationary check:
     ros2 launch my_bringup scan_fusion.launch.py

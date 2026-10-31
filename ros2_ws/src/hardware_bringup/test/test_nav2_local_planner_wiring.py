@@ -1,4 +1,5 @@
-"""TDM-24: local_planner started from launch/nav2_local.launch.py.
+"""
+TDM-24: local_planner started from launch/nav2_local.launch.py.
 
 Needs launch_ros importable (a sourced ROS environment); skipped otherwise.
 """

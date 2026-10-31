@@ -1,4 +1,5 @@
-"""delivery-autonomy on the real robot: gps_datum_tf + state_estimation + planner + controller.
+"""
+delivery-autonomy on the real robot: gps_datum_tf + state_estimation + planner + controller.
 
 Plan stages 2 and 4. Starts the three autonomy executables directly with hardware
 parameters instead of autonomy.launch.py (whose map->odom is a fixed Gazebo pose), so

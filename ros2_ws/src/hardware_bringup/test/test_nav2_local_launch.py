@@ -1,4 +1,5 @@
-"""TDM-21: config/nav2_local.yaml and the parameter patching in launch/nav2_local.launch.py.
+"""
+TDM-21: config/nav2_local.yaml and the parameter patching in launch/nav2_local.launch.py.
 
 Needs launch_ros importable (a sourced ROS environment); skipped otherwise.
 """
@@ -159,7 +160,8 @@ def test_tdm22_patching_leaves_the_planner_alone(tdm21_params):
 
 # ---------------------------------------------------------------- TDM-29: inflation, params file
 def _tdm29_inflation_cost(params, distance):
-    """Nav2 InflationLayer cost at `distance` m from a lethal cell, per nav2_local.yaml.
+    """
+    Nav2 InflationLayer cost at `distance` m from a lethal cell, per nav2_local.yaml.
 
     253 inside the footprint's inscribed radius, 252 * exp(-cost_scaling_factor * (distance -
     inscribed)) out to inflation_radius, 0 beyond.

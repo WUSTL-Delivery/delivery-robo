@@ -1,4 +1,5 @@
-"""Joystick -> ``geometry_msgs/Twist`` on ``/cmd_vel_joy`` for ``twist_mux``.
+"""
+Joystick -> ``geometry_msgs/Twist`` on ``/cmd_vel_joy`` for ``twist_mux``.
 
 Replaces ``joystick_node`` in the ``autonomy`` mode. Same stick mapping as that node
 (throttle on ``axes[1]``, steer on ``axes[0]``) but the output is a Twist so that

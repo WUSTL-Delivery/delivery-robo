@@ -1,4 +1,5 @@
-"""Time one ``mppi_step`` on this machine (plan §7 risk 1: MPPI on a Pi CPU).
+"""
+Time one ``mppi_step`` on this machine (plan §7 risk 1: MPPI on a Pi CPU).
 
     ros2 run hardware_bringup bench_mppi [iterations]
 
@@ -59,7 +60,8 @@ def main(argv=None):
                      upper_bounds=jnp.array([v_target, max_steer]))
 
     def extra_args():
-        """Return the arguments mppi_step takes since TDM-33 (and the vehicle since TDM-41), window
+        """
+        Return the arguments mppi_step takes since TDM-33 (and the vehicle since TDM-41), window
         cut as by the controller."""
         if crop_window is None:
             return {}

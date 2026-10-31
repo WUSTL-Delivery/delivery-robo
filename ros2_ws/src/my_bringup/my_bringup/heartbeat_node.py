@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Heartbeat node: periodically POSTs the robot's status to the robo-web API.
+"""
+Heartbeat node: periodically POSTs the robot's status to the robo-web API.
 
 Every `interval_s` it sends JSON to `{api_url}/api/heartbeat`. Only the stdlib
 is used (urllib), and network failures are logged (throttled) but never

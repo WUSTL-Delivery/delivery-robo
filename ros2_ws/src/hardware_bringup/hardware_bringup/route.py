@@ -1,4 +1,5 @@
-"""Pure geometry for the local planner: route resampling, monotonic progress, carrot, transforms.
+"""
+Pure geometry for the local planner: route resampling, monotonic progress, carrot, transforms.
 
 No ROS imports, so ``test/test_route.py`` runs as plain pytest.
 
@@ -43,7 +44,8 @@ FINAL_APPROACH_HYSTERESIS = 0.5  # m; how far past final_approach_distance befor
 
 
 def resample(points, spacing=DEFAULT_SPACING):
-    """Return ``points`` (a sequence of ``(x, y)``) resampled every ``spacing`` metres of arc length.
+    """
+    Return ``points`` (a sequence of ``(x, y)``) resampled every ``spacing`` metres of arc length.
 
     The first and last input points are always kept. Duplicate consecutive points are dropped.
     A route of one distinct point comes back as that single point.
@@ -85,7 +87,8 @@ def cumulative_lengths(points):
 
 
 class Route:
-    """A resampled polyline in one frame, parameterised by arc length.
+    """
+    A resampled polyline in one frame, parameterised by arc length.
 
     ``final_yaw`` is the heading wanted at the end (a direct goal's orientation). Without it the
     end inherits the last segment's heading.
@@ -107,7 +110,8 @@ class Route:
         return self.points[-1]
 
     def project(self, x, y, s_min=0.0, window=math.inf):
-        """Arc length of the route point closest to ``(x, y)``, searching only segments that
+        """
+        Arc length of the route point closest to ``(x, y)``, searching only segments that
         overlap ``[s_min, s_min + window]``. The result is not clamped to ``s_min``."""
         if len(self.points) == 1:
             return 0.0
@@ -138,7 +142,8 @@ class Route:
         return min(self.length, max(s_prev, s))
 
     def carrot_s(self, progress, lookahead, offset=0.0):
-        """Arc length of the carrot: ``lookahead + offset`` ahead of ``progress``, kept on the route
+        """
+        Arc length of the carrot: ``lookahead + offset`` ahead of ``progress``, kept on the route
         and never behind the robot's progress."""
         return min(self.length, max(progress, progress + lookahead + offset))
 
@@ -148,7 +153,8 @@ class Route:
 
     @property
     def end_yaw(self):
-        """Heading at the end of the route (the final carrot's), or None.
+        """
+        Heading at the end of the route (the final carrot's), or None.
 
         That is ``final_yaw`` if given, else the last segment's direction. A one-point route
         without ``final_yaw`` has no direction.
@@ -190,7 +196,8 @@ def _segment_index(s_list, s):
 
 
 def drop_duplicate_points(points, min_distance=DUPLICATE_DISTANCE):
-    """Indices of the ``points`` to keep so that no two consecutive kept points are closer than
+    """
+    Indices of the ``points`` to keep so that no two consecutive kept points are closer than
     ``min_distance``.
 
     The first point (the robot) is kept. When the last point would be dropped it takes the place
@@ -220,7 +227,8 @@ def angle_difference(a, b):
 
 
 def loop_excess(points, expected_length=0.0):
-    """How much longer the path is than it has to be: its length minus the larger of the straight
+    """
+    How much longer the path is than it has to be: its length minus the larger of the straight
     line from its first to its last point and ``expected_length``.
 
     ``expected_length`` lets a caller that knows the path has to bend (the route's own arc length
@@ -233,7 +241,8 @@ def loop_excess(points, expected_length=0.0):
 
 
 def is_loop(points, start_yaw, goal_yaw, margin, expected_length=0.0):
-    """True if the path is a detour of more than ``margin`` metres (``loop_excess``) to a goal
+    """
+    True if the path is a detour of more than ``margin`` metres (``loop_excess``) to a goal
     whose heading is within 90 deg of the start heading.
 
     The heading condition keeps a forward U-turn to a goal behind the robot (which also costs
@@ -246,7 +255,8 @@ def is_loop(points, start_yaw, goal_yaw, margin, expected_length=0.0):
 
 def in_final_approach(to_goal, distance, path_ends_at_goal, active=False,
                       hysteresis=FINAL_APPROACH_HYSTERESIS):
-    """Whether the planner should stop replanning and leave the last path to the follower.
+    """
+    Whether the planner should stop replanning and leave the last path to the follower.
 
     Only once the last path forwarded already ends at the final goal (so the follower holds a
     path that finishes the job) and the robot is within ``distance`` of the goal; this close,
@@ -265,7 +275,8 @@ def heads_with(yaw, end_yaw):
 
 
 def goal_line_offset(x, y, end, end_yaw):
-    """Return ``(along, across)``: the point ``(x, y)`` in the frame of the route's end.
+    """
+    Return ``(along, across)``: the point ``(x, y)`` in the frame of the route's end.
 
     ``along`` runs along the final heading ``end_yaw``; it is >= 0 on or past the goal line,
     the line through ``end`` perpendicular to that heading. ``across`` is > 0 to the left.
@@ -276,7 +287,8 @@ def goal_line_offset(x, y, end, end_yaw):
 
 
 def crossed_goal_line(x, y, yaw, end, end_yaw, half_width):
-    """Return True once the robot has crossed the goal line beside the route's end.
+    """
+    Return True once the robot has crossed the goal line beside the route's end.
 
     That is: the robot at ``(x, y)`` heading ``yaw`` is on or past the goal line, at most
     ``half_width`` to either side of ``end``, and drives the final heading's way
@@ -325,7 +337,8 @@ def rotate_vector(q, v):
 
 
 def transform_pose(translation, rotation, position, orientation):
-    """Apply the transform ``(translation, rotation)`` (a tf2 ``target <- source`` transform) to a
+    """
+    Apply the transform ``(translation, rotation)`` (a tf2 ``target <- source`` transform) to a
     pose given in the source frame. Returns ``(position, orientation)`` in the target frame."""
     rx, ry, rz = rotate_vector(rotation, position)
     p = (translation[0] + rx, translation[1] + ry, translation[2] + rz)

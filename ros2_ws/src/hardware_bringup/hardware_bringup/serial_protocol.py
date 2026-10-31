@@ -1,4 +1,5 @@
-"""Line protocol of ``firmware/motor-controller`` (57600 baud, ``\\r``-terminated).
+"""
+Line protocol of ``firmware/motor-controller`` (57600 baud, ``\\r``-terminated).
 
 Commands the bridge uses::
 

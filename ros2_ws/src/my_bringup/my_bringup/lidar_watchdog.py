@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Lidar watchdog: restarts a hung sllidar_node so a re-plugged RPLidar recovers.
+"""
+Lidar watchdog: restarts a hung sllidar_node so a re-plugged RPLidar recovers.
 
 Why: upstream sllidar_node (Slamtec/sllidar_ros2) exits with -1 when the serial
 port is missing at startup, so launch's respawn=True keeps retrying until the

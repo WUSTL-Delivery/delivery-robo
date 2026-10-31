@@ -1,4 +1,5 @@
-"""Ackermann conversions shared by ``joy_to_cmdvel`` (encode) and ``arduino_bridge`` (decode).
+"""
+Ackermann conversions shared by ``joy_to_cmdvel`` (encode) and ``arduino_bridge`` (decode).
 
 The autonomy stack speaks ``geometry_msgs/Twist`` as (forward speed, yaw rate). The Arduino
 speaks ``m <pwm> <servo_deg>``. Everything that converts between the two lives here so the
@@ -39,7 +40,8 @@ class DriveMap:
 
 
 def check_finite(*values):
-    """Raise ``ValueError`` if any value is NaN or infinite.
+    """
+    Raise ``ValueError`` if any value is NaN or infinite.
 
     ``min``/``max``/``np.clip`` in the controller let NaN straight through, so a diverged MPPI
     solve arrives here verbatim. Reject it before it reaches the motor.
@@ -92,7 +94,8 @@ def wrap_int32(x):
 
 
 def odom_from_ticks(delta_ticks, dt, metres_per_tick, delta_steer, geom: DriveGeometry):
-    """Body speed and yaw rate from an encoder tick delta and the steering angle in force.
+    """
+    Body speed and yaw rate from an encoder tick delta and the steering angle in force.
 
     There is one drive encoder and no steering feedback, so the yaw rate is synthesised from
     the commanded steering angle (plan §7 risk 3). ``metres_per_tick`` may be negative to

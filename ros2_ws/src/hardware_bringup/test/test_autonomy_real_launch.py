@@ -1,4 +1,5 @@
-"""TDM-34: launch/autonomy_real.launch.py gives delivery-autonomy's controller the robot's settings.
+"""
+TDM-34: launch/autonomy_real.launch.py gives delivery-autonomy's controller the robot's settings.
 
 The controller gets config/hardware.yaml (its controller_server section) in both modes, and
 use_costmap = the nav2 launch argument. TDM-41: its vehicle model is the robot's (hardware.yaml's
@@ -47,7 +48,8 @@ autonomy_real = _load_launch_module()
 
 
 def _controller(tmp_path, sim, nav2):
-    """Run the launch file's OpaqueFunction as `ros2 launch` would; return the controller Node and
+    """
+    Run the launch file's OpaqueFunction as `ros2 launch` would; return the controller Node and
     its parameters evaluated (a Path per parameter file, a dict per inline set)."""
     from launch import LaunchContext
     from launch_ros.actions import Node
@@ -115,7 +117,8 @@ def test_controller_remapped_to_twist_mux_only_on_the_robot(tmp_path):
 
 
 def _effective(params, node):
-    """The parameter values `node` ends up with from the evaluated parameter list: each file's /**
+    """
+    The parameter values `node` ends up with from the evaluated parameter list: each file's /**
     section, then its section for the node (later wins, as in rcl), then each inline dict."""
     values = {}
     for entry in params:

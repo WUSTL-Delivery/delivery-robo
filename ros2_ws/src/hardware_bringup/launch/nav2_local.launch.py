@@ -1,4 +1,5 @@
-"""Nav2 local planning: costmap + planner_server + local_planner (TDM-21, TDM-24).
+"""
+Nav2 local planning: costmap + planner_server + local_planner (TDM-21, TDM-24).
 
     ros2 launch hardware_bringup nav2_local.launch.py                     # robot, sources:=fused
     ros2 launch hardware_bringup nav2_local.launch.py sources:=separate   # lidar + camera, both mark/clear
@@ -100,7 +101,8 @@ def _have(pkg):
 
 
 def broken_typesupport(packages=TYPESUPPORT_PACKAGES):
-    """[(library, error)] for every typesupport library of `packages` that cannot bind its symbols.
+    """
+    [(library, error)] for every typesupport library of `packages` that cannot bind its symbols.
 
     TDM-46: on a ROS install mixed from two apt syncs these libraries load, because ld.so binds
     functions lazily, and the process dies (exit 127, "symbol lookup error") on the first message
@@ -174,7 +176,8 @@ def patch_params(params, *, map_yaml, sources, scan_topic='', sim=False, planner
 
 
 def patched_params_path(environ=None):
-    """Where the patched params file goes: one per user and ROS domain, rewritten by every launch.
+    """
+    Where the patched params file goes: one per user and ROS domain, rewritten by every launch.
 
     $ROS_HOME (default ~/.ros, where ROS keeps its logs) rather than a new mkstemp file per launch,
     which piled up in /tmp. Keyed by ROS_DOMAIN_ID because a second stack can only run beside this
@@ -187,7 +190,8 @@ def patched_params_path(environ=None):
 
 
 def write_params(params, path):
-    """Dump params to path atomically: a temp file beside it, then a rename over it.
+    """
+    Dump params to path atomically: a temp file beside it, then a rename over it.
 
     A reader never sees half a file, and a failed write leaves the previous file and no stray
     temp file.

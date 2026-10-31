@@ -1,4 +1,5 @@
-"""GPS datum: gates the raw fix stream, forwards it to the EKF, and publishes ``map -> odom``.
+"""
+GPS datum: gates the raw fix stream, forwards it to the EKF, and publishes ``map -> odom``.
 
 ``state_estimation`` takes the FIRST ``NavSatFix`` it receives as the permanent origin of its
 ``odom`` frame, checks neither ``status`` nor NaN, and never re-derives it. This node sits
@@ -72,7 +73,8 @@ def geodetic_to_ecef(lat_deg, lon_deg, alt):
 
 
 def geodetic_to_enu(lat_deg, lon_deg, alt, lat0_deg, lon0_deg, alt0):
-    """Local east/north/up metres of a WGS84 point about the origin ``(lat0, lon0, alt0)``.
+    """
+    Local east/north/up metres of a WGS84 point about the origin ``(lat0, lon0, alt0)``.
 
     The exact tangent-plane frame, through ECEF. Gazebo's spherical coordinates relate world
     positions to the NavSat sensor's lat/lon/altitude the same way.
@@ -95,7 +97,8 @@ def datum_transform_utm(lat_deg, lon_deg, zone, northern, origin_xy):
 
 
 def datum_transform_local_enu(lat_deg, lon_deg, alt, origin_lla, step_deg=1e-5):
-    """``map -> odom`` as ``(x, y, z, yaw)`` in the sim: ENU about the Gazebo world origin.
+    """
+    ``map -> odom`` as ``(x, y, z, yaw)`` in the sim: ENU about the Gazebo world origin.
 
     yaw = direction of true north at the datum in the origin's ENU frame, measured as in
     ``utm.grid_convergence``: ``atan2(-dx, dy)`` of a short step due north.

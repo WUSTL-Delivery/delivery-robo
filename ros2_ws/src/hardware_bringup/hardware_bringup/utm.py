@@ -1,4 +1,5 @@
-"""WGS84 -> UTM (Transverse Mercator) and grid convergence, in pure Python.
+"""
+WGS84 -> UTM (Transverse Mercator) and grid convergence, in pure Python.
 
 Used by ``gps_datum_tf`` to place the ``odom`` frame (true east/north, origin at the first GPS
 fix) inside the planner's ``map`` frame (UTM zone 15N grid east/north, origin at
@@ -66,7 +67,8 @@ def latlon_to_utm(lat_deg, lon_deg, zone, northern=True):
 
 
 def grid_convergence(lat_deg, lon_deg, zone, northern=True, step_deg=1e-5):
-    """Angle from true north to grid north, radians, positive when grid north lies EAST of true north.
+    """
+    Angle from true north to grid north, radians, positive when grid north lies EAST of true north.
 
     Derived numerically from the projection itself (project the point and a point slightly
     due-north of it) so no sign convention is hardcoded.

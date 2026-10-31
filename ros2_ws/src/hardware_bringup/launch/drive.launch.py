@@ -1,4 +1,5 @@
-"""Drive chain only: joystick -> twist_mux -> arduino_bridge -> Arduino.
+"""
+Drive chain only: joystick -> twist_mux -> arduino_bridge -> Arduino.
 
 Plan stage 1. Runs on its own for bench tests (wheels off the ground):
 

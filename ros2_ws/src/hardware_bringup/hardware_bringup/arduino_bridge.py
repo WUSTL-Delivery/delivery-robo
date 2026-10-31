@@ -1,4 +1,5 @@
-"""Sole owner of the Arduino serial port: ``/cmd_vel_out`` in, ``/odom`` out.
+"""
+Sole owner of the Arduino serial port: ``/cmd_vel_out`` in, ``/odom`` out.
 
 Why one node owns the port: ``joystick_node`` and ``wheel_encoder_node`` open the same
 board and cannot share it. In the ``autonomy`` mode this node is the only process that opens
@@ -78,7 +79,8 @@ _FLOAT_LINE = re.compile(rb'^-?\d+(?:\.\d+)?$')
 
 
 def parse_encoder_angle(line):
-    """Return the AS5047P angle in degrees if ``line`` is a bare number, else ``None``.
+    """
+    Return the AS5047P angle in degrees if ``line`` is a bare number, else ``None``.
 
     The firmware's ``e`` reply used to be a cumulative quadrature count (bare int); it is now
     ``Serial.println(getEncoder())`` on an AS5047P absolute-angle sensor (bare float, degrees,

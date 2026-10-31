@@ -1,4 +1,5 @@
-"""Local-planner geometry tests: resampling, monotonic progress, carrot, odom -> map transform,
+"""
+Local-planner geometry tests: resampling, monotonic progress, carrot, odom -> map transform,
 (TDM-28) finishing near the goal: final approach, loop rejection, duplicate poses, and (TDM-44)
 stopping at the goal line."""
 import math

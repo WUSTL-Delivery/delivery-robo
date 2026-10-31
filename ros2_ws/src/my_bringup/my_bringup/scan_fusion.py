@@ -1,4 +1,5 @@
-"""Fuse /scan_filtered and /camera/scan into /scan_fused for obstacle marking.
+"""
+Fuse /scan_filtered and /camera/scan into /scan_fused for obstacle marking.
 
 The camera scan is already height-filtered and projected by depth_obstacles.
 Use TF from robot_description; do not apply the camera mount a second time.

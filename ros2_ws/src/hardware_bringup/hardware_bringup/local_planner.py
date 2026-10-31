@@ -1,4 +1,5 @@
-"""Local planner: turns a goal into Nav2 local paths, in ``map``, for the MPPI path follower.
+"""
+Local planner: turns a goal into Nav2 local paths, in ``map``, for the MPPI path follower.
 
 Two kinds of goal:
 

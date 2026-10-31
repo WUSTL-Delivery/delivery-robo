@@ -1,4 +1,5 @@
-"""Nav2 costmap fed by the RPLidar and the RealSense, to check both are usable.
+"""
+Nav2 costmap fed by the RPLidar and the RealSense, to check both are usable.
 
 Run it next to the robot stack (master_launch.py, or the boot service):
 
