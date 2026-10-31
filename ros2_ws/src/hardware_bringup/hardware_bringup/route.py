@@ -111,8 +111,11 @@ class Route:
 
     def project(self, x, y, s_min=0.0, window=math.inf):
         """
-        Arc length of the route point closest to ``(x, y)``, searching only segments that
-        overlap ``[s_min, s_min + window]``. The result is not clamped to ``s_min``."""
+        Return the arc length of the route point closest to ``(x, y)``.
+
+        Only segments that overlap ``[s_min, s_min + window]`` are searched. The result is not
+        clamped to ``s_min``.
+        """
         if len(self.points) == 1:
             return 0.0
         best_d2, best_s = math.inf, s_min
@@ -137,18 +140,20 @@ class Route:
         return best_s
 
     def advance(self, x, y, s_prev, window):
-        """New progress for a robot at ``(x, y)``: never behind ``s_prev``, never past the end."""
+        """Return the progress at ``(x, y)``: never behind ``s_prev``, never past the end."""
         s = self.project(x, y, s_min=s_prev, window=window)
         return min(self.length, max(s_prev, s))
 
     def carrot_s(self, progress, lookahead, offset=0.0):
         """
-        Arc length of the carrot: ``lookahead + offset`` ahead of ``progress``, kept on the route
-        and never behind the robot's progress."""
+        Return the carrot's arc length: ``lookahead + offset`` ahead of ``progress``.
+
+        Kept on the route and never behind the robot's progress.
+        """
         return min(self.length, max(progress, progress + lookahead + offset))
 
     def reaches_end(self, s):
-        """True if arc length ``s`` (a carrot) is the end of the route, i.e. the final goal."""
+        """Return True if arc length ``s`` (a carrot) is the route's end, i.e. the final goal."""
         return s >= self.length - 1e-6
 
     @property
@@ -197,12 +202,12 @@ def _segment_index(s_list, s):
 
 def drop_duplicate_points(points, min_distance=DUPLICATE_DISTANCE):
     """
-    Indices of the ``points`` to keep so that no two consecutive kept points are closer than
-    ``min_distance``.
+    Return the indices of the ``points`` to keep.
 
-    The first point (the robot) is kept. When the last point would be dropped it takes the place
-    of the last kept one instead, so the path still ends exactly at its goal pose (with the goal's
-    orientation, which is the pose the planner put last).
+    No two consecutive kept points are closer than ``min_distance``. The first point (the robot)
+    is kept. When the last point would be dropped it takes the place of the last kept one instead,
+    so the path still ends exactly at its goal pose (with the goal's orientation, which is the pose
+    the planner put last).
     """
     keep = []
     for i, (x, y) in enumerate(points):
@@ -222,14 +227,16 @@ def path_length(points):
 
 
 def angle_difference(a, b):
-    """``a - b`` wrapped to ``[-pi, pi]``."""
+    """Return ``a - b`` wrapped to ``[-pi, pi]``."""
     return math.atan2(math.sin(a - b), math.cos(a - b))
 
 
 def loop_excess(points, expected_length=0.0):
     """
-    How much longer the path is than it has to be: its length minus the larger of the straight
-    line from its first to its last point and ``expected_length``.
+    Return how much longer the path is than it has to be.
+
+    That is its length minus the larger of the straight line from its first to its last point
+    and ``expected_length``.
 
     ``expected_length`` lets a caller that knows the path has to bend (the route's own arc length
     to the carrot, e.g. around a switchback walkway) avoid calling that bend a detour.
@@ -242,8 +249,10 @@ def loop_excess(points, expected_length=0.0):
 
 def is_loop(points, start_yaw, goal_yaw, margin, expected_length=0.0):
     """
-    True if the path is a detour of more than ``margin`` metres (``loop_excess``) to a goal
-    whose heading is within 90 deg of the start heading.
+    Return True if the path is a loop.
+
+    A loop is a detour of more than ``margin`` metres (``loop_excess``) to a goal whose heading
+    is within 90 deg of the start heading.
 
     The heading condition keeps a forward U-turn to a goal behind the robot (which also costs
     several metres more than the straight line) from counting as a loop.
@@ -338,8 +347,11 @@ def rotate_vector(q, v):
 
 def transform_pose(translation, rotation, position, orientation):
     """
-    Apply the transform ``(translation, rotation)`` (a tf2 ``target <- source`` transform) to a
-    pose given in the source frame. Returns ``(position, orientation)`` in the target frame."""
+    Apply the transform ``(translation, rotation)`` to a pose given in the source frame.
+
+    The transform is a tf2 ``target <- source`` transform. Returns ``(position, orientation)``
+    in the target frame.
+    """
     rx, ry, rz = rotate_vector(rotation, position)
     p = (translation[0] + rx, translation[1] + ry, translation[2] + rz)
     return p, quaternion_multiply(rotation, orientation)

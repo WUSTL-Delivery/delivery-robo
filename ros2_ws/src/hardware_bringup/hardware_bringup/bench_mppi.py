@@ -61,8 +61,10 @@ def main(argv=None):
 
     def extra_args():
         """
-        Return the arguments mppi_step takes since TDM-33 (and the vehicle since TDM-41), window
-        cut as by the controller."""
+        Return the arguments mppi_step takes since TDM-33 (and the vehicle since TDM-41).
+
+        The window is cut as by the controller.
+        """
         if crop_window is None:
             return {}
         return {**fixed, 'window': crop_window(costmap, x0, (0.0, 0.0, 0.0))}

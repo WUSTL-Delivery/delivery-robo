@@ -49,8 +49,11 @@ autonomy_real = _load_launch_module()
 
 def _controller(tmp_path, sim, nav2):
     """
-    Run the launch file's OpaqueFunction as `ros2 launch` would; return the controller Node and
-    its parameters evaluated (a Path per parameter file, a dict per inline set)."""
+    Run the launch file's OpaqueFunction as `ros2 launch` would.
+
+    Returns the controller Node and its parameters evaluated (a Path per parameter file, a dict
+    per inline set).
+    """
     from launch import LaunchContext
     from launch_ros.actions import Node
     from launch_ros.utilities import evaluate_parameters
@@ -118,8 +121,11 @@ def test_controller_remapped_to_twist_mux_only_on_the_robot(tmp_path):
 
 def _effective(params, node):
     """
-    The parameter values `node` ends up with from the evaluated parameter list: each file's /**
-    section, then its section for the node (later wins, as in rcl), then each inline dict."""
+    Return the parameter values `node` ends up with from the evaluated parameter list.
+
+    Each file's /** section, then its section for the node (later wins, as in rcl), then each
+    inline dict.
+    """
     values = {}
     for entry in params:
         if isinstance(entry, dict):

@@ -1,7 +1,9 @@
 """
-Local-planner geometry tests: resampling, monotonic progress, carrot, odom -> map transform,
-(TDM-28) finishing near the goal: final approach, loop rejection, duplicate poses, and (TDM-44)
-stopping at the goal line."""
+Local-planner geometry tests.
+
+Resampling, monotonic progress, carrot, odom -> map transform, (TDM-28) finishing near the
+goal: final approach, loop rejection, duplicate poses, and (TDM-44) stopping at the goal line.
+"""
 import math
 
 from hardware_bringup.route import (
@@ -26,7 +28,7 @@ import pytest
 
 
 def _route_on_polyline(p, polyline, tol=1e-9):
-    """True if ``p`` lies on one of the polyline's segments."""
+    """Return True if ``p`` lies on one of the polyline's segments."""
     for (x0, y0), (x1, y1) in zip(polyline, polyline[1:]):
         dx, dy = x1 - x0, y1 - y0
         seg2 = dx * dx + dy * dy

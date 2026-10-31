@@ -33,7 +33,7 @@ from sensor_msgs.msg import LaserScan
 
 
 def _find_pids(name):
-    """PIDs (owned by us) whose argv[0] basename is exactly `name`."""
+    """Return the PIDs (owned by us) whose argv[0] basename is exactly `name`."""
     pids = []
     uid = os.getuid()
     for entry in os.listdir('/proc'):

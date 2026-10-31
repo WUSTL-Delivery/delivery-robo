@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-ROS2 WebSocket Client for Robot Delivery System
-Connects to the authoritative server and handles order matching
+ROS2 WebSocket client for the robot delivery system.
+
+Connects to the authoritative server and handles order matching.
 """
 
 import json
@@ -52,7 +53,7 @@ class DeliveryRobotClient(Node):
         self.get_logger().info(f'Connecting to: {self.ws_url}')
 
     def connect_websocket(self):
-        """Connect to the WebSocket server"""
+        """Connect to the WebSocket server."""
         try:
             self.ws = websocket.WebSocketApp(
                 self.ws_url,
@@ -74,7 +75,7 @@ class DeliveryRobotClient(Node):
             self.get_logger().error(f'Failed to connect to WebSocket: {e}')
 
     def on_open(self, ws):
-        """Called when WebSocket connection is established"""
+        """Handle the WebSocket connection being established."""
         self.connected = True
         self.get_logger().info('WebSocket connected!')
 
@@ -82,7 +83,7 @@ class DeliveryRobotClient(Node):
         self.send_status_update('online')
 
     def on_message(self, ws, message):
-        """Handle incoming WebSocket messages"""
+        """Handle incoming WebSocket messages."""
         try:
             data = json.loads(message)
             self.get_logger().info(f'Received message: {data}')
@@ -97,12 +98,12 @@ class DeliveryRobotClient(Node):
             self.get_logger().error(f'Error handling message: {e}')
 
     def on_error(self, ws, error):
-        """Handle WebSocket errors"""
+        """Handle WebSocket errors."""
         self.get_logger().error(f'WebSocket error: {error}')
         self.connected = False
 
     def on_close(self, ws, close_status_code, close_msg):
-        """Called when WebSocket connection is closed"""
+        """Handle the WebSocket connection closing."""
         self.get_logger().warn(f'WebSocket closed: {close_status_code} - {close_msg}')
         self.connected = False
         self.status = 'offline'
@@ -113,7 +114,7 @@ class DeliveryRobotClient(Node):
         self.connect_websocket()
 
     def send_status_update(self, status):
-        """Send robot status update to server"""
+        """Send a robot status update to the server."""
         if not self.connected:
             self.get_logger().warn('Cannot send status update: not connected')
             return
@@ -135,7 +136,7 @@ class DeliveryRobotClient(Node):
             self.get_logger().error(f'Failed to send status update: {e}')
 
     def handle_order_match(self, match_data):
-        """Handle order assignment from server"""
+        """Handle an order assignment from the server."""
         robot_id = match_data.get('robot_id')
         order_id = match_data.get('order_id')
 
@@ -161,7 +162,7 @@ class DeliveryRobotClient(Node):
         # self.navigate_to_pickup(order_id)
 
     def delivery_complete_callback(self, msg):
-        """Called when delivery is complete"""
+        """Handle a completed delivery."""
         try:
             data = json.loads(msg.data)
             order_id = data.get('order_id')
@@ -175,7 +176,7 @@ class DeliveryRobotClient(Node):
             self.get_logger().error(f'Error handling delivery complete: {e}')
 
     def timer_callback(self):
-        """Periodic status update"""
+        """Publish the periodic status update."""
         # Publish current status
         status_msg = String()
         status_msg.data = json.dumps({
@@ -193,7 +194,7 @@ class DeliveryRobotClient(Node):
             pass
 
     def shutdown(self):
-        """Cleanup on shutdown"""
+        """Clean up on shutdown."""
         self.get_logger().info('Shutting down robot client...')
         if self.connected:
             self.send_status_update('shutdown')

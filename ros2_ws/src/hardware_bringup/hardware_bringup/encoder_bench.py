@@ -15,7 +15,7 @@ def tick_delta(current, previous):
 
 
 def summarize(samples, distance=None, turns=None):
-    """Samples are (host monotonic seconds, cumulative count)."""
+    """Summarize the samples, given as (host monotonic seconds, cumulative count) pairs."""
     if len(samples) < 2:
         raise ValueError('At least two samples are required')
     gaps = [b[0] - a[0] for a, b in zip(samples, samples[1:])]

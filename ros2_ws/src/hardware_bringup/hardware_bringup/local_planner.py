@@ -213,7 +213,7 @@ class LocalPlanner(Node):
 
     # ------------------------------------------------------------------ TF helpers
     def _lookup(self, target, source):
-        """``(translation, rotation)`` of the latest ``target <- source`` transform."""
+        """Return ``(translation, rotation)`` of the latest ``target <- source`` transform."""
         t = self._tf.lookup_transform(target, source, Time()).transform
         return ((t.translation.x, t.translation.y, t.translation.z),
                 (t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w))

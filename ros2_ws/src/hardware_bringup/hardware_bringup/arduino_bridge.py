@@ -1,4 +1,4 @@
-"""
+r"""
 Sole owner of the Arduino serial port: ``/cmd_vel_out`` in, ``/odom`` out.
 
 Why one node owns the port: ``joystick_node`` and ``wheel_encoder_node`` open the same
@@ -9,8 +9,8 @@ and plug order decides which is ``ttyUSB0``. When it is missing the node says wh
 
 Data flow::
 
-    /cmd_vel_out (Twist, from twist_mux) --> Ackermann inversion --> "m <pwm> <servo>\\r"
-    "e\\r" polled at 20 Hz  --> AS5047P angle (deg) -> unwrap, gear ratio --> /odom (twist only)
+    /cmd_vel_out (Twist, from twist_mux) --> Ackermann inversion --> "m <pwm> <servo>\r"
+    "e\r" polled at 20 Hz  --> AS5047P angle (deg) -> unwrap, gear ratio --> /odom (twist only)
                                                                           --> /wheel_angle (Float64, deg)
                                                                           --> /wheel_ticks (Float64, raw deg)
     the command actually sent (after clipping / watchdog)          --> /cmd_vel_executed
