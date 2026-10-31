@@ -9,7 +9,7 @@ def test_encoder_payload(payload, expected):
 
 
 @pytest.mark.parametrize('payload', ['No response received', 'Parsed - Vel: 12',
-                                   '', '1.5', '12 extra', 2**31, True])
+                                     '', '1.5', '12 extra', 2**31, True])
 def test_invalid_encoder_payload(payload):
     with pytest.raises(ValueError):
         encoder_count(payload)

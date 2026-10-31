@@ -111,8 +111,8 @@ def main(args=None):
                 raise ValueError('encoder_message_type must be int64 or string')
             self.joy_pub = self.create_publisher(Joy, '/encoder_test/joy', 10)
             self.status_pub = self.create_publisher(String, '/encoder_test/rotation_status',
-                QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
-                           durability=DurabilityPolicy.TRANSIENT_LOCAL))
+                                                    QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                                                               durability=DurabilityPolicy.TRANSIENT_LOCAL))
             self.create_subscription(Int64 if encoder_type == 'int64' else String,
                                      encoder_topic, self.on_count, qos_profile_sensor_data)
             self.get_logger().info(f'Encoder input: {encoder_topic} ({encoder_type})')

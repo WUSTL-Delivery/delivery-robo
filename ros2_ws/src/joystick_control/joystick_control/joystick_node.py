@@ -27,13 +27,13 @@ def missing_port_hint(device, rules=MOTOR_RULES):
 class JoystickNode(Node):
     def __init__(self):
         super().__init__('joystick_node')
-        
+
         # Declare parameters
         self.declare_parameter('device', DEFAULT_DEVICE)
         self.declare_parameter('baud_rate', 57600)
         self.declare_parameter('timeout', 1.0)
         self.declare_parameter('verbose', False)
-        
+
         self.device = self.get_parameter('device').get_parameter_value().string_value
         self.baud_rate = self.get_parameter('baud_rate').get_parameter_value().integer_value
         self.timeout = self.get_parameter('timeout').get_parameter_value().double_value
@@ -41,12 +41,11 @@ class JoystickNode(Node):
 
         self.stored_msg = None
 
-        
         # Constants
         self.MAX_PWM = 110.0
         self.MAX_STEER = 25.0
         self.STEER_ORIGIN = 45.0
-        
+
         # Initialize Serial; while it is closed (board unplugged, /dev/motor missing, write
         # failure) retry every second, so teleop comes back without a restart
         self.ser = None
@@ -90,7 +89,7 @@ class JoystickNode(Node):
         # Example axes mapping from C++ code:
         # steer = axes[2] (left stick X in their code)
         # throttle = axes[1] (left stick Y)
-        
+
         # Checking if axes are available
         if self.stored_msg is not None:
             msg = self.stored_msg
@@ -107,7 +106,7 @@ class JoystickNode(Node):
 
             pwm = throttle * self.MAX_PWM
             servo_angle = self.STEER_ORIGIN + steer * self.MAX_STEER
-        
+
             if self.verbose:
                 self.get_logger().info(f"Throttle: {throttle:.2f} | Steer: {steer:.2f}")
                 self.get_logger().info(f"PWM: {pwm:.2f} | Angle: {servo_angle:.2f}")
@@ -124,6 +123,7 @@ class JoystickNode(Node):
                     except Exception:
                         pass
 
+
 def main(args=None):
     rclpy.init(args=args)
     node = JoystickNode()
@@ -136,6 +136,7 @@ def main(args=None):
             node.ser.close()
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

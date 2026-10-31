@@ -74,6 +74,7 @@ def missing_port_hint(port, rules=MOTOR_RULES):
                 f'deployment/README.md. Not falling back to /dev/ttyUSB*: that can be the lidar')
     return f'{port} does not exist: is the motor-controller board plugged in?'
 
+
 _FLOAT_LINE = re.compile(rb'^-?\d+(?:\.\d+)?$')
 
 

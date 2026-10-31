@@ -6,6 +6,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
 
+
 class ImuNode(Node):
     def __init__(self):
         super().__init__('imu_node')
@@ -35,7 +36,6 @@ class ImuNode(Node):
                     'adafruit_bno08x < 1.3.0: sensor reports stay at 20 Hz regardless of rate_hz '
                     '(pip install -U adafruit-circuitpython-bno08x)')
 
-
     def timer_callback(self):
         msg = Imu()
 
@@ -45,7 +45,7 @@ class ImuNode(Node):
         quat_i, quat_j, quat_k, quat_real = self.bno.quaternion
         accel_x, accel_y, accel_z = self.bno.acceleration
         gyro_x, gyro_y, gyro_z = self.bno.gyro
-        
+
         msg.orientation.x = quat_i
         msg.orientation.y = quat_j
         msg.orientation.z = quat_k
@@ -65,6 +65,7 @@ class ImuNode(Node):
 
         self.publisher_.publish(msg)
 
+
 def main(args=None):
     rclpy.init(args=args)
     node = ImuNode()
@@ -75,6 +76,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
