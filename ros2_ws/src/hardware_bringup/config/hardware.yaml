@@ -35,7 +35,9 @@ arduino_bridge:
     servo_max_deg: 180.0
     pwm_per_mps: 73.3333          # 110 PWM / 1.5 m/s: the controller's V_LIMIT maps to joystick_node's MAX_PWM
     pwm_limit: 110                # joystick_node's MAX_PWM (firmware accepts up to 255)
-    metres_per_tick: 0.001        # PLACEHOLDER. Push the robot 10 m, read /wheel_ticks, divide. Negative flips.
+    gear_ratio: 0.833333333333    # 10-tooth motor gear / 12-tooth wheel-axle gear; AS5047P reads the motor shaft
+    wheel_radius_m: 0.1016        # 4 in wheel radius (user-reported; tape-measure to confirm if odom drifts)
+    encoder_direction: 1.0        # 1 or -1; flip if /wheel_ticks grows while the wheel moves in reverse (UNVERIFIED, check on bench)
 
 joy_to_cmdvel:
   ros__parameters:
