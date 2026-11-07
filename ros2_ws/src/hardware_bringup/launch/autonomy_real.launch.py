@@ -122,7 +122,7 @@ def _nodes(context):
         respawn=True,
         respawn_delay=10.0,          # it dies if Overpass is unreachable; give the network time
         cwd=cache_dir,
-        parameters=[real_time],
+        parameters=[{**real_time, 'use_gps_start': not sim, 'gps_topic': ekf_gps}],
     )
     # hardware.yaml's controller_server section (speeds, stop distance) in both modes, so the sim
     # drives with the robot's values. use_costmap follows nav2: without Nav2 there is no costmap,
