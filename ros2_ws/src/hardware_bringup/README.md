@@ -78,6 +78,10 @@ joystick still overrides.
   whenever the guard is not running. `obstacle_guard:=false` (master_launch or
   autonomy_real.launch.py) runs it disabled: it never locks and logs an error every 30 s.
   Bench work only. `lidar:=false` / `realsense:=false` count as missing sensors.
+  `sensors:=false` (master_launch only) is a shortcut that forces `lidar`, `realsense` and
+  `obstacle_guard` off together for bench work without any sensors, independent of `nav2` (which
+  keeps its own default; `robot_config.yaml`'s shipped `nav2: false` still runs with full sensors
+  and the guard unless `sensors:=false` is passed explicitly).
   Measured against the apt twist_mux 4.5.0 with fake publishers: the lock engaged 1.0 s after
   the last scan, the bridge sent `m 0` 0.5 s later, the joystick drove through the lock, the
   lock released 0.04-0.1 s after a scan came back, and navigation was blocked 0.4 s after the

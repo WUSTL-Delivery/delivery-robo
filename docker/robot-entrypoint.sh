@@ -18,7 +18,11 @@ domain=$(cfg ros_domain_id)
 [ -n "$domain" ] && export ROS_DOMAIN_ID="$domain"
 [ $# -gt 0 ] && exec "$@"
 
-mode=$(cfg mode) nav2=$(cfg nav2) robot_id=$(cfg robot_id) api_url=$(cfg api_url)
-echo "robot-entrypoint: $config mode=${mode:-teleop} nav2=${nav2:-false} image=$GIT_SHA"
+mode=$(cfg mode) nav2=$(cfg nav2) lidar=$(cfg lidar) realsense=$(cfg realsense) \
+  obstacle_guard=$(cfg obstacle_guard) robot_id=$(cfg robot_id) api_url=$(cfg api_url)
+echo "robot-entrypoint: $config mode=${mode:-teleop} nav2=${nav2:-false} lidar=${lidar:-true}" \
+     "realsense=${realsense:-true} obstacle_guard=${obstacle_guard:-true} image=$GIT_SHA"
 exec ros2 launch my_bringup master_launch.py "mode:=${mode:-teleop}" sim:=false "nav2:=${nav2:-false}" \
-  "robot_id:=${robot_id:-robo-1}" "api_url:=${api_url%/}"
+  "lidar:=${lidar:-true}" "realsense:=${realsense:-true}" \
+  "obstacle_guard:=${obstacle_guard:-true}" "robot_id:=${robot_id:-robo-1}" \
+  "api_url:=${api_url%/}"

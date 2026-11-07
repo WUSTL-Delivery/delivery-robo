@@ -28,7 +28,7 @@ start it:
 3. reads `deployment/robot_config.yaml`, logs a WARNING if `/dev/motor` or
    `/dev/rplidar` is missing or the udev rules behind them are not installed
    ([Motor-controller board](#motor-controller-board-devmotor-udev-symlink)), and launches
-   `ros2 launch my_bringup master_launch.py mode:=<mode> sim:=<sim> nav2:=<nav2>`.
+   `ros2 launch my_bringup master_launch.py mode:=<mode> sim:=<sim> nav2:=<nav2> lidar:=<lidar> realsense:=<realsense> obstacle_guard:=<obstacle_guard>`.
 
 So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
 `sudo systemctl restart robot.service`). No hand-building on the Pi.
@@ -39,6 +39,9 @@ So the normal deploy flow is: **merge to `main`, then reboot the robot** (or
 mode: teleop        # teleop | autonomous | autonomy
 sim: false          # laptop testing only, see "Testing with the sim" below
 nav2: false         # mode: autonomy only: Nav2 local planning (true | false)
+lidar: true         # every mode except sim: RPLidar C1 driver + watchdog (true | false)
+realsense: true     # every mode except sim: Intel RealSense depth camera driver (true | false)
+obstacle_guard: true # mode: autonomy only (TDM-52): twist_mux lock while lidar+realsense are both silent
 robot_id: robo-1    # name shown on the robo-web dashboard
 api_url: https://robo-web-ebon.vercel.app   # robo-web base URL (no trailing slash)
 # ros_domain_id: 42 # optional: DDS domain for every node started at boot
@@ -64,6 +67,27 @@ overrides both. Unknown/missing mode falls back to `teleop`.
   Needs the apt Nav2 packages (`deployment/install_deps.sh`). Missing or unknown values fall back
   to `false` (an unknown value logs a warning); `nav2: true` with another mode logs a warning and
   is ignored. See `ros2_ws/src/hardware_bringup/README.md`, "Nav2 local planning".
+
+- `lidar` — `false` skips the RPLidar C1 driver, its hot-plug watchdog and `/scan_filtered`
+  (master_launch.py `lidar:=false`): no lidar plugged in, or `mode: autonomy` without Nav2/the
+  costmap needing it. In `mode: autonomy`, `obstacle_guard` still blocks driving (joystick still
+  works) unless the RealSense depth camera (`/camera/scan`) is publishing; set `obstacle_guard:
+  false` too if that camera is also off.
+
+- `realsense` — `false` skips the Intel RealSense depth camera driver (`/camera/color`,
+  `/camera/depth`, `/camera/scan`) and `depth_obstacles` (master_launch.py `realsense:=false`): no
+  camera plugged in, or not needed. In `mode: autonomy`, `obstacle_guard` still blocks driving
+  (joystick still works) unless the lidar is publishing; set `obstacle_guard: false` too if the
+  lidar is also off.
+
+- `obstacle_guard` — `false` (master_launch.py `obstacle_guard:=false`, TDM-52) disables the
+  `mode: autonomy` twist_mux lock that blocks driving while both `lidar` and `realsense` are
+  silent: it runs but never locks, and logs an error every 30 s as a reminder. **`lidar: false`
+  and `realsense: false` alone do not disable the lock** — they just guarantee it engages (both
+  scans permanently silent), so set `obstacle_guard: false` too for bench work without sensors.
+  `master_launch.py sensors:=false` is a launch-time-only shortcut that forces `lidar`,
+  `realsense` and `obstacle_guard` off together, independent of `nav2`; it is not a
+  `robot_config.yaml` key.
 
 The same switch works by hand:
 `ros2 launch my_bringup master_launch.py mode:=autonomous`.

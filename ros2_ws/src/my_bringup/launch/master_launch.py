@@ -42,6 +42,9 @@ from launch_ros.actions import Node
 #   * on the robot, hardware_bringup obstacle_guard (autonomy_real.launch.py) locks twist_mux's
 #     navigation input while both scans are silent, also with nav2:=false. lidar:=false and
 #     realsense:=false count as missing sensors. obstacle_guard:=false disables it for bench work.
+#   * sensors:=false is a shortcut for bench work without any sensors: forces lidar, realsense and
+#     obstacle_guard off together regardless of their own flags (nav2's own default is untouched,
+#     so the shipped robot_config.yaml, nav2: false, keeps running with sensors + the guard).
 
 # NTRIP caster settings for the ublox_dgnss ntrip client. The committed values are the
 # historical ones (they are in git history already). deployment/ntrip.local.yaml (gitignored,
@@ -108,6 +111,23 @@ def _obstacle_guard_arg():
         description='autonomy mode on the robot: block autonomous driving (twist_mux lock) while '
                     'neither the lidar nor the depth camera publishes; false = disabled, for '
                     'bench work only')
+
+
+def _use_sensor_condition(sensors, flag, mode, sim):
+    """
+    IfCondition shared by the lidar/realsense drivers: on only with both ``sensors`` and the
+    driver's own flag true, and never in the autonomy+sim combo (Gazebo provides the topic).
+    """
+    return IfCondition(PythonExpression(
+        ["'", sensors, "' == 'true' and '", flag, "' == 'true' and not ('", mode,
+         "' == 'autonomy' and '", sim, "' == 'true')"]))
+
+
+def _effective_obstacle_guard(obstacle_guard, sensors):
+    """obstacle_guard:=false if its own flag or sensors:=false says so (TDM-52, sensors bundle)."""
+    return PythonExpression(
+        ["'true' if '", obstacle_guard, "' == 'true' and '", sensors,
+         "' == 'true' else 'false'"])
 
 
 def _scan_fusion_actions(mode, sim, nav2, nav2_sources):
@@ -207,6 +227,13 @@ def generate_launch_description():
        'realsense', default_value='true', choices=['true', 'false'],
        description='every mode except sim: run the Intel RealSense depth camera driver '
                    '(/camera/color, /camera/depth)',
+    )
+    sensors = LaunchConfiguration('sensors')
+    sensors_arg = DeclareLaunchArgument(
+       'sensors', default_value='true', choices=['true', 'false'],
+       description='bench work without any sensors: false forces lidar, realsense and '
+                   'obstacle_guard off together, regardless of their own flags. Does not '
+                   'change nav2 (its own default/behavior is independent of this).',
     )
     is_teleop = IfCondition(PythonExpression(["'", mode, "' == 'teleop'"]))
     # sensors run in both non-teleop modes, except when the sim stands in for them
@@ -346,9 +373,13 @@ def generate_launch_description():
             autonomy_nodes.append(IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(hw_dir, 'launch', 'autonomy_real.launch.py')),
-                # nav2: the controller slows and stops for the costmap only when Nav2 publishes one
-                launch_arguments={'sim': sim, 'nav2': nav2,
-                                  'obstacle_guard': LaunchConfiguration('obstacle_guard')}.items(),
+                # nav2: the controller slows and stops for the costmap only when Nav2 publishes one.
+                # obstacle_guard: 'false' if either its own flag or sensors:=false says so.
+                launch_arguments={
+                    'sim': sim, 'nav2': nav2,
+                    'obstacle_guard': _effective_obstacle_guard(
+                        LaunchConfiguration('obstacle_guard'), sensors),
+                }.items(),
                 condition=is_autonomy,
             ))
         except PackageNotFoundError:
@@ -421,8 +452,7 @@ def generate_launch_description():
     # lidar_watchdog SIGINTs it once /scan is silent for 5 s and respawn then
     # reopens the re-plugged device. Guarded like ublox_dgnss so launch still
     # works where the driver isn't built. Off with sim:=true: Gazebo publishes /scan.
-    use_lidar = IfCondition(PythonExpression(
-       ["'", lidar, "' == 'true' and not ('", mode, "' == 'autonomy' and '", sim, "' == 'true')"]))
+    use_lidar = _use_sensor_condition(sensors, lidar, mode, sim)
     lidar_nodes = []
     lidar_params = os.path.join(get_package_share_directory('my_bringup'), 'config', 'lidar.yaml')
     try:
@@ -506,9 +536,7 @@ def generate_launch_description():
     # reconnect_timeout); respawn only covers a crash. Guarded like sllidar_ros2
     # so launch still works where the driver isn't installed. Off with sim:=true
     # (the Gazebo robot has its own camera topics).
-    use_realsense = IfCondition(PythonExpression(
-       ["'", realsense, "' == 'true' and not ('", mode, "' == 'autonomy' and '", sim,
-        "' == 'true')"]))
+    use_realsense = _use_sensor_condition(sensors, realsense, mode, sim)
     realsense_nodes = []
     try:
         get_package_share_directory('realsense2_camera')
@@ -564,6 +592,7 @@ def generate_launch_description():
          api_url_arg,
          lidar_arg,
          realsense_arg,
+         sensors_arg,
          _obstacle_guard_arg(),
          *([heartbeat_node] if heartbeat_available else []),
          *robot_description_actions,  # robot description (TF)

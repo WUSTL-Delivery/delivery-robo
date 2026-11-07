@@ -21,6 +21,23 @@ sim: false
 # goals on /goal_pose or /nav/goal_node. Needs the apt Nav2 packages (deployment/install_deps.sh).
 nav2: false
 
+# RPLidar C1 driver (/scan, /scan_filtered) + hot-plug watchdog, every mode except sim. false =
+# skip it (e.g. no lidar plugged in, or mode: autonomy without nav2/obstacle_guard needing it).
+# autonomy mode: obstacle_guard still locks driving if neither this nor the depth camera
+# publishes, so turn obstacle_guard off too if the RealSense is also off.
+lidar: true
+
+# Intel RealSense depth camera driver (/camera/color, /camera/depth), every mode except sim.
+# false = skip it (e.g. no camera plugged in). autonomy mode: obstacle_guard still locks driving
+# if neither this nor the lidar publishes, so turn obstacle_guard off too if the lidar is also off.
+realsense: true
+
+# mode: autonomy only (TDM-52): blocks autonomous driving (twist_mux lock) while neither the
+# lidar nor the RealSense publishes; the joystick still overrides. false = disabled (never locks,
+# logs an error every 30 s) for bench work without sensors, e.g. alongside lidar: false and
+# realsense: false above.
+obstacle_guard: true
+
 # DDS domain for every node started at boot (0-101). Leave commented to keep the default
 # (domain 0, shared with every other ROS 2 machine on the same network).
 # ros_domain_id: 42

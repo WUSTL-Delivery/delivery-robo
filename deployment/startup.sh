@@ -228,6 +228,35 @@ case "$NAV2" in
 esac
 [ "$NAV2" = true ] && [ "$MODE" != autonomy ] && log "WARNING: nav2: true only applies to mode: autonomy; ignored in $MODE"
 
+# RPLidar C1 driver + watchdog (master_launch.py lidar:=, every mode except sim). Missing = true.
+LIDAR=""
+[ -f "$CONFIG" ] && LIDAR=$(run_logged cfg_get lidar)
+case "$LIDAR" in
+  true|false) ;;
+  "") LIDAR=true ;;
+  *) log "WARNING: lidar must be true or false, got '$LIDAR'; using true"; LIDAR=true ;;
+esac
+
+# Intel RealSense depth camera driver (master_launch.py realsense:=, every mode except sim).
+# Missing = true.
+REALSENSE=""
+[ -f "$CONFIG" ] && REALSENSE=$(run_logged cfg_get realsense)
+case "$REALSENSE" in
+  true|false) ;;
+  "") REALSENSE=true ;;
+  *) log "WARNING: realsense must be true or false, got '$REALSENSE'; using true"; REALSENSE=true ;;
+esac
+
+# obstacle_guard (master_launch.py obstacle_guard:=, TDM-52, autonomy only). Missing = true.
+OBSTACLE_GUARD=""
+[ -f "$CONFIG" ] && OBSTACLE_GUARD=$(run_logged cfg_get obstacle_guard)
+case "$OBSTACLE_GUARD" in
+  true|false) ;;
+  "") OBSTACLE_GUARD=true ;;
+  *) log "WARNING: obstacle_guard must be true or false, got '$OBSTACLE_GUARD'; using true"
+     OBSTACLE_GUARD=true ;;
+esac
+
 # Optional: pin the DDS domain so the robot does not share domain 0 with everything else on
 # the WiFi it happens to join. Unset in the config = leave ROS_DOMAIN_ID as the environment has it.
 DOMAIN=""
@@ -272,7 +301,8 @@ log "source $WS/install/setup.bash exit=$?"
 run_logged command -v ros2
 stage "ROS launch"
 announce booting launching
-log "launching my_bringup master_launch.py mode:=$MODE sim:=$SIM nav2:=$NAV2 robot_id:=$ROBOT_ID api_url:=$API_URL"
+log "launching my_bringup master_launch.py mode:=$MODE sim:=$SIM nav2:=$NAV2 lidar:=$LIDAR realsense:=$REALSENSE obstacle_guard:=$OBSTACLE_GUARD robot_id:=$ROBOT_ID api_url:=$API_URL"
 log "handing off to ros2 after ${SECONDS}s; launch stdout/stderr continue in this log"
-exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "sim:=$SIM" "nav2:=$NAV2" "robot_id:=$ROBOT_ID" \
+exec ros2 launch my_bringup master_launch.py "mode:=$MODE" "sim:=$SIM" "nav2:=$NAV2" "lidar:=$LIDAR" \
+  "realsense:=$REALSENSE" "obstacle_guard:=$OBSTACLE_GUARD" "robot_id:=$ROBOT_ID" \
   ${API_URL:+"api_url:=$API_URL"}

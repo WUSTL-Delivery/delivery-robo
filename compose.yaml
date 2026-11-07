@@ -28,4 +28,13 @@ services:
       - /dev:/dev
       - /etc/udev/rules.d:/etc/udev/rules.d:ro  # the nodes' "udev rule not installed" hints
       - ./deployment:/repo/deployment:ro
+      - planner_cache:/root/.cache/delivery_autonomy  # global_planner's osmnx Overpass cache
+                                                        # (ros2_ws/src/hardware_bringup/launch/
+                                                        # autonomy_real.launch.py planner_cache_dir):
+                                                        # survives container recreation, so repeat
+                                                        # starts don't re-query Overpass and hit its
+                                                        # rate limit (`docker compose run` too)
     restart: unless-stopped
+
+volumes:
+  planner_cache:
