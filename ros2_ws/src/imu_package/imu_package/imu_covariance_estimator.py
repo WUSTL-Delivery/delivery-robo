@@ -4,8 +4,7 @@ from typing import List
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile
-from rclpy.qos import ReliabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Imu
 
 
@@ -26,7 +25,8 @@ def quaternion_to_rpy(x: float, y: float, z: float, w: float) -> np.ndarray:
 
 
 class ImuCovarianceEstimator(Node):
-    def __init__(self, topic: str, warmup_samples: int, target_samples: int, min_variance: float) -> None:
+    def __init__(self, topic: str, warmup_samples: int, target_samples: int,
+                 min_variance: float) -> None:
         super().__init__('imu_covariance_estimator')
         self.topic = topic
         self.warmup_samples = warmup_samples
@@ -50,7 +50,7 @@ class ImuCovarianceEstimator(Node):
         )
         self.get_logger().info(
             f"Listening on '{self.topic}'. "
-            f"Warmup: {self.warmup_samples} samples, capture: {self.target_samples} samples."
+            f'Warmup: {self.warmup_samples} samples, capture: {self.target_samples} samples.'
         )
 
     def imu_callback(self, msg: Imu) -> None:
@@ -60,7 +60,7 @@ class ImuCovarianceEstimator(Node):
         self.messages_seen += 1
         if self.messages_seen <= self.warmup_samples:
             if self.messages_seen % max(1, self.warmup_samples // 5) == 0:
-                self.get_logger().info(f"Warmup {self.messages_seen}/{self.warmup_samples}...")
+                self.get_logger().info(f'Warmup {self.messages_seen}/{self.warmup_samples}...')
             return
 
         qx = msg.orientation.x
@@ -69,10 +69,12 @@ class ImuCovarianceEstimator(Node):
         qw = msg.orientation.w
         qnorm = np.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
         if qnorm > 1e-9:
-            self.orientation_samples.append(quaternion_to_rpy(qx / qnorm, qy / qnorm, qz / qnorm, qw / qnorm))
+            self.orientation_samples.append(
+                quaternion_to_rpy(qx / qnorm, qy / qnorm, qz / qnorm, qw / qnorm))
 
         self.angular_velocity_samples.append(
-            np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z], dtype=np.float64)
+            np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z],
+                     dtype=np.float64)
         )
         self.linear_accel_samples.append(
             np.array(
@@ -83,13 +85,14 @@ class ImuCovarianceEstimator(Node):
 
         captured = len(self.linear_accel_samples)
         if captured % max(1, self.target_samples // 10) == 0:
-            self.get_logger().info(f"Captured {captured}/{self.target_samples} samples...")
+            self.get_logger().info(f'Captured {captured}/{self.target_samples} samples...')
 
         if captured >= self.target_samples:
             self.finished = True
             self.report_and_shutdown()
 
-    def _covariance_from_samples(self, values: List[np.ndarray], unwrap_angles: bool = False) -> np.ndarray:
+    def _covariance_from_samples(self, values: List[np.ndarray],
+                                 unwrap_angles: bool = False) -> np.ndarray:
         if len(values) < 2:
             raise RuntimeError('Need at least 2 samples to compute covariance.')
 
@@ -112,7 +115,8 @@ class ImuCovarianceEstimator(Node):
 
     def report_and_shutdown(self) -> None:
         try:
-            orientation_cov = self._covariance_from_samples(self.orientation_samples, unwrap_angles=True)
+            orientation_cov = self._covariance_from_samples(
+                self.orientation_samples, unwrap_angles=True)
             angular_cov = self._covariance_from_samples(self.angular_velocity_samples)
             linear_cov = self._covariance_from_samples(self.linear_accel_samples)
         except RuntimeError as exc:
@@ -133,7 +137,7 @@ class ImuCovarianceEstimator(Node):
         self.get_logger().info(f'linear_acceleration_covariance: {linear_flat}')
         self.get_logger().info('Paste these arrays into your IMU publisher node.')
 
-        with open("imu_covariance_results.txt", "w") as file:
+        with open('imu_covariance_results.txt', 'w') as file:
             file.write(f'orientation_covariance: {orientation_flat}')
             file.write(f'angular_velocity_covariance: {angular_flat}')
             file.write(f'linear_acceleration_covariance: {linear_flat}')

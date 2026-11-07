@@ -9,6 +9,9 @@
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
+  <depend>python3-numpy</depend>
+  <!-- Defined in deployment/rosdep.yaml; pulls in Blinka's board/busio. -->
+  <depend>python3-adafruit-circuitpython-bno08x-pip</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

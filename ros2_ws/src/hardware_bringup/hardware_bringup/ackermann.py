@@ -1,4 +1,5 @@
-"""Ackermann conversions shared by ``joy_to_cmdvel`` (encode) and ``arduino_bridge`` (decode).
+"""
+Ackermann conversions shared by ``joy_to_cmdvel`` (encode) and ``arduino_bridge`` (decode).
 
 The autonomy stack speaks ``geometry_msgs/Twist`` as (forward speed, yaw rate). The Arduino
 speaks ``m <pwm> <servo_deg>``. Everything that converts between the two lives here so the
@@ -13,8 +14,8 @@ Conventions
   while stopped; ``joy_to_cmdvel`` applies the same floor when encoding, so the round trip
   is exact (see ``test_joystick_roundtrip_recovers_steering``).
 """
-import math
 from dataclasses import dataclass
+import math
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,7 @@ class DriveGeometry:
 @dataclass(frozen=True)
 class ServoMap:
     center_deg: float = 45.0                  # servo command that points the wheels straight
-    deg_per_rad: float = 57.29577951308232    # servo degrees per radian of road-wheel angle (negative flips)
+    deg_per_rad: float = 57.29577951308232    # servo deg per rad of road-wheel angle (< 0 flips)
     min_deg: float = 0.0
     max_deg: float = 180.0
 
@@ -39,7 +40,8 @@ class DriveMap:
 
 
 def check_finite(*values):
-    """Raise ``ValueError`` if any value is NaN or infinite.
+    """
+    Raise ``ValueError`` if any value is NaN or infinite.
 
     ``min``/``max``/``np.clip`` in the controller let NaN straight through, so a diverged MPPI
     solve arrives here verbatim. Reject it before it reaches the motor.
@@ -92,7 +94,8 @@ def wrap_int32(x):
 
 
 def odom_from_ticks(delta_ticks, dt, metres_per_tick, delta_steer, geom: DriveGeometry):
-    """Body speed and yaw rate from an encoder tick delta and the steering angle in force.
+    """
+    Body speed and yaw rate from an encoder tick delta and the steering angle in force.
 
     There is one drive encoder and no steering feedback, so the yaw rate is synthesised from
     the commanded steering angle (plan §7 risk 3). ``metres_per_tick`` may be negative to

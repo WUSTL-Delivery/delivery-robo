@@ -9,9 +9,10 @@
 #
 # CAVEAT: the CP2102 is a very common chip (many ESP32 / microcontroller
 # dev boards use it). If any OTHER 10c4:ea60 device is ever plugged into the
-# Pi (e.g. the wheel-encoder microcontroller board), the generic rule below
-# would give it the /dev/rplidar symlink too. In that case pin the rule to
-# the C1's own USB serial number:
+# Pi, the generic rule below would give it the /dev/rplidar symlink too. The
+# motor-controller board is not one: it is a WCH CH340 (1a86, /dev/motor, see
+# 99-motor.rules). If one is added, pin the rule to the C1's own USB serial
+# number:
 #
 #   1. Plug in ONLY the C1 and find its port:   ls /dev/ttyUSB*
 #   2. Read its serial:

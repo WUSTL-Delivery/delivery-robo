@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install the robot's udev rules on the Pi (or a dev laptop):
 #   99-rplidar.rules          RPLidar C1 -> /dev/rplidar symlink
+#   99-motor.rules            motor-controller board (CH340) -> /dev/motor symlink
 #   99-realsense-libusb.rules Intel RealSense USB access for non-root users
 # Idempotent: safe to re-run after editing a rule (e.g. to pin the C1's
 # serial). Must run as root:
@@ -16,7 +17,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RULES=(99-rplidar.rules 99-realsense-libusb.rules)
+RULES=(99-rplidar.rules 99-motor.rules 99-realsense-libusb.rules)
 ROBOT_USER="${ROBOT_USER:-delivery}"
 
 # 1. rule files (each only rewritten when it changed)
@@ -33,7 +34,7 @@ for rule in "${RULES[@]}"; do
 done
 
 # 2. reload + re-trigger so already-plugged devices pick the rules up:
-#    tty for the C1's symlink, usb for the RealSense permissions
+#    tty for the C1's and the motor board's symlinks, usb for the RealSense permissions
 udevadm control --reload-rules
 udevadm trigger --subsystem-match=tty --action=add
 udevadm trigger --subsystem-match=usb --action=add
@@ -56,6 +57,15 @@ if [[ -e /dev/rplidar ]]; then
   echo "OK: $(ls -l /dev/rplidar)"
 else
   echo "/dev/rplidar not present (is the C1 plugged in?)"
+fi
+if [[ -e /dev/motor ]]; then
+  echo "OK: $(ls -l /dev/motor)"
+else
+  echo "/dev/motor not present (is the motor-controller board plugged in?)"
+fi
+if [[ -e /dev/motor && -e /dev/rplidar && "$(readlink -f /dev/motor)" == "$(readlink -f /dev/rplidar)" ]]; then
+  echo "ERROR: /dev/motor and /dev/rplidar are the same tty ($(readlink -f /dev/motor))" >&2
+  exit 1
 fi
 if lsusb 2>/dev/null | grep -qiE 'ID (8086:0b|8086:0a|38e5:)'; then
   echo "OK: RealSense on USB: $(lsusb | grep -iE 'ID (8086:0b|8086:0a|38e5:)' | head -1)"

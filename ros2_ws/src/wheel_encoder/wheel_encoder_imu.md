@@ -90,7 +90,7 @@ import serial
 
 ```python
 super().__init__('wheel_encoder_node')
-self.declare_parameter('port', '/dev/ttyUSB0')
+self.declare_parameter('port', DEFAULT_PORT)   # '/dev/motor'
 self.declare_parameter('baud_rate', 57600)
 self.declare_parameter('timer_period', 0.1)
 ```
@@ -99,7 +99,7 @@ The node is named `wheel_encoder_node` in the ROS2 graph. Three **ROS2 parameter
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `port` | `/dev/ttyUSB0` | The Linux device file for the USB serial connection |
+| `port` | `/dev/motor` | The motor-controller board's udev symlink (`deployment/udev/99-motor.rules`). Not a raw `/dev/ttyUSB*`: the lidar is one too |
 | `baud_rate` | `57600` | Serial communication speed in bits per second |
 | `timer_period` | `0.1` | How often (in seconds) the node polls the encoder — 10 Hz |
 
@@ -292,7 +292,7 @@ ros2 node info /wheel_encoder_node
 
 | Problem | Likely Cause | Fix |
 |---|---|---|
-| `serial.SerialException: [Errno 2] No such file or directory: '/dev/ttyUSB0'` | USB cable not connected or wrong port | Run `ls /dev/ttyUSB*` to find the correct port, then pass it as a parameter |
+| `wheel_encoder_node: /dev/motor does not exist (...)` | Board unplugged, or the Pi's udev rules were never installed | Plug the board in; otherwise run `sudo deployment/udev/install_udev.sh` once (deployment/README.md, "Motor-controller board") |
 | `serial.SerialException: [Errno 13] Permission denied: '/dev/ttyUSB0'` | User does not have permission to access the serial port | Run `sudo usermod -aG dialout $USER` and log out/in |
 | Topic publishes empty strings | Microcontroller not responding to `e\n` | Check microcontroller firmware to confirm it handles the `e` command |
 | Garbage characters in published data | Baud rate mismatch | Confirm the microcontroller firmware baud rate and set `baud_rate` parameter to match |

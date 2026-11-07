@@ -1,22 +1,21 @@
 """Pure-math tests for the Ackermann command/odometry conversions (no ROS needed)."""
 import math
 
-import pytest
-
 from hardware_bringup.ackermann import (
+    check_finite,
     DriveGeometry,
     DriveMap,
-    ServoMap,
-    check_finite,
     effective_speed,
     odom_from_ticks,
     pwm_from_speed,
     servo_degrees,
+    ServoMap,
     speed_from_pwm,
     steering_from_twist,
     wrap_int32,
     yaw_rate_from_steering,
 )
+import pytest
 
 L = 0.36322
 GEOM = DriveGeometry(wheelbase=L, min_speed_for_steer=0.05, max_steer_rad=0.4363)
@@ -62,7 +61,8 @@ def test_standstill_steering_uses_min_speed_and_clips():
 def test_steering_is_clipped_both_ways():
     assert steering_from_twist(0.2, 5.0, GEOM) == pytest.approx(GEOM.max_steer_rad)
     assert steering_from_twist(0.2, -5.0, GEOM) == pytest.approx(-GEOM.max_steer_rad)
-    assert yaw_rate_from_steering(1.0, 2.0, GEOM) == pytest.approx(math.tan(GEOM.max_steer_rad) / L)
+    assert yaw_rate_from_steering(1.0, 2.0, GEOM) == pytest.approx(
+        math.tan(GEOM.max_steer_rad) / L)
 
 
 @pytest.mark.parametrize('v', [0.0, 0.3, 1.0, -0.4, 1.5])

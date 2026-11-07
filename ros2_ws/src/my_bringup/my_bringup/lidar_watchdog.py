@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Lidar watchdog: restarts a hung sllidar_node so a re-plugged RPLidar recovers.
+"""
+Lidar watchdog: restarts a hung sllidar_node so a re-plugged RPLidar recovers.
 
 Why: upstream sllidar_node (Slamtec/sllidar_ros2) exits with -1 when the serial
 port is missing at startup, so launch's respawn=True keeps retrying until the
@@ -32,7 +33,7 @@ from sensor_msgs.msg import LaserScan
 
 
 def _find_pids(name):
-    """PIDs (owned by us) whose argv[0] basename is exactly `name`."""
+    """Return the PIDs (owned by us) whose argv[0] basename is exactly `name`."""
     pids = []
     uid = os.getuid()
     for entry in os.listdir('/proc'):
@@ -64,7 +65,8 @@ class LidarWatchdog(Node):
         self.first_seen = {}   # pid -> monotonic time the watchdog first saw it
         self.signaled = {}     # pid -> monotonic time SIGINT was sent
 
-        self.create_subscription(LaserScan, self.scan_topic, self._on_scan, qos_profile_sensor_data)
+        self.create_subscription(
+            LaserScan, self.scan_topic, self._on_scan, qos_profile_sensor_data)
         self.create_timer(period, self._check)
         self.get_logger().info(
             f'watching {self.scan_topic}; restarting {self.process_name} '
@@ -84,7 +86,8 @@ class LidarWatchdog(Node):
             self.first_seen.setdefault(pid, now)
             if pid in self.signaled:
                 if now - self.signaled[pid] > self.kill_grace:
-                    self.get_logger().warn(f'{self.process_name} [{pid}] ignored SIGINT; sending SIGKILL')
+                    self.get_logger().warn(
+                        f'{self.process_name} [{pid}] ignored SIGINT; sending SIGKILL')
                     self._send(pid, signal.SIGKILL)
                     self.signaled[pid] = now
                 continue

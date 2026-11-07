@@ -1,9 +1,0 @@
-<library path="ackdrive_arduino">
-  <class name="ackdrive_arduino/AckDriveArduino" 
-         type="ackdrive_arduino::AckDriveArduino" 
-         base_class_type="hardware_interface::SystemInterface">
-    <description>
-      Hardware interface for Ackermann steering robot with Arduino
-    </description>
-  </class>
-</library>

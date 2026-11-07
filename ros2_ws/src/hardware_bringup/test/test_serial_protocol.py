@@ -1,9 +1,9 @@
 """Tests for the Arduino line protocol helpers (no serial port needed)."""
 from hardware_bringup.serial_protocol import (
-    ENCODER_QUERY,
-    LineSplitter,
     drive_command,
+    ENCODER_QUERY,
     is_error_response,
+    LineSplitter,
     parse_encoder_count,
 )
 

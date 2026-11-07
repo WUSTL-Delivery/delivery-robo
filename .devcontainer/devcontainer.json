@@ -1,0 +1,12 @@
+{
+  "name": "delivery-robo",
+  "dockerComposeFile": "../compose.yaml",
+  "service": "dev",
+  "workspaceFolder": "/home/dev/delivery-robo",
+  "remoteUser": "dev",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  }
+}

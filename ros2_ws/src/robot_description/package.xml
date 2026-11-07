@@ -3,7 +3,7 @@
 <package format="3">
   <name>robot_description</name>
   <version>0.0.0</version>
-  <description>URDF/xacro model of the delivery robot and a robot_state_publisher launch (TF: base_footprint -> base_link -> lidar_link / imu_link / gps_link / camera_link).</description>
+  <description>URDF/xacro model of the delivery robot and a robot_state_publisher launch (TF: base_link -> base_footprint / lidar_link / imu_link / gps_link / camera_link; base_link is the root, the EKF publishes odom -> base_link).</description>
   <maintainer email="jaxonp808@gmail.com">delivery</maintainer>
   <license>TODO: License declaration</license>
 
