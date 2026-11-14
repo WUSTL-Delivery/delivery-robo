@@ -79,9 +79,10 @@ gps_datum_tf:
 # delivery-autonomy's MPPI follower (autonomy controller, delivery-autonomy `dev`). Only the values
 # that differ from its defaults; README.md "Controller parameters" lists every parameter and why.
 # use_costmap is not here: autonomy_real.launch.py sets it from its nav2 argument.
-# Its vehicle model: wheelbase and max_steer_rad come from /** above, the values arduino_bridge
-# converts the controller's yaw rate with. steer_tau, drive_tau and max_accel are not set: the
-# robot's lags are unmeasured, so the controller keeps its defaults (fitted to the sim car).
+# Its vehicle model: wheelbase comes from /** above, the value arduino_bridge converts the
+# controller's yaw rate with. max_steer_rad too, except for the TEMPORARY tighter clamp below.
+# steer_tau, drive_tau and max_accel are not set: the robot's lags are unmeasured, so the controller
+# keeps its defaults (fitted to the sim car).
 # With sim:=true, autonomy_real.launch.py puts the sim car's whole vehicle back (0.5 m, 0.6 rad).
 controller_server:
   ros__parameters:
@@ -94,3 +95,10 @@ controller_server:
                                   # = local_planner's goal_tolerance. At the path's end beyond it: goal aborted
     yaw_goal_tolerance: 3.15      # rad, >= pi turns the heading check off: the robot needs no heading at the goal.
                                   # Default 0.15 (8.6 deg); on the Oct 24 Pi test the robot drove on past its goal
+    # TEMPORARY (2026-11-14), for the first outdoor path test: overrides /** max_steer_rad (0.4108)
+    # for the controller only. 0.314 rad = 18 deg = 13 servo steps either side of 94 (m b 81..107),
+    # 1.19 m tightest turn: enough for 90-degree path corners, while the parallel-steered front
+    # wheels drag less than at the mechanical limit. A guess, not a measurement.
+    # TODO: measure the angle where the front wheels start to drag (README "Known limits",
+    # "Temporary steering clamp") and replace this, or delete it to go back to /**.
+    max_steer_rad: 0.314

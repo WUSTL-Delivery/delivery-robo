@@ -144,9 +144,10 @@ def test_robot_controller_models_the_robot_the_bridge_drives(tmp_path):
     controller = _effective(params, 'controller_server')
     bridge = _effective([pathlib.Path(HARDWARE_YAML)], 'arduino_bridge')
     # The controller converts its steering angle to a yaw rate with wheelbase and clips it at
-    # max_steer_rad; the bridge converts back and clips with its own. Equal, the angle survives.
-    for name in ('wheelbase', 'max_steer_rad'):
-        assert controller[name] == bridge[name], name
+    # max_steer_rad; the bridge converts back with the same wheelbase and clips with its own. The
+    # angle survives as long as the controller's clip is no looser than the bridge's.
+    assert controller['wheelbase'] == bridge['wheelbase']
+    assert controller['max_steer_rad'] <= bridge['max_steer_rad']
     # The robot's lags are unmeasured: the controller keeps its defaults
     for name in ('steer_tau', 'drive_tau', 'max_accel'):
         assert name not in controller, name
