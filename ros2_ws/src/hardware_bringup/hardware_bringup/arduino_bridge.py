@@ -123,8 +123,8 @@ class ArduinoBridge(Node):
             max_steer_rad=float(p('max_steer_rad', 0.4363)),
         )
         self._servo = ServoMap(
-            center_deg=float(p('servo_center_deg', 90.0)),
-            deg_per_rad=float(p('servo_deg_per_rad', math.degrees(1.0))),
+            center_deg=float(p('servo_center_deg', 89.0)),
+            deg_per_rad=float(p('servo_deg_per_rad', 41.38)),
             min_deg=float(p('servo_min_deg', 0.0)),
             max_deg=float(p('servo_max_deg', 180.0)),
         )

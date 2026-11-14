@@ -30,8 +30,9 @@ arduino_bridge:
     min_encoder_dt: 0.02          # replies closer than this are merged (firmware stalls bunch them)
     max_encoder_dt: 0.5           # gaps longer than this are not differentiated across. A gap this long misreads
                                   # speeds above 0.53 m/s, hence the 0.5 m/s caps (README "Encoder speed limit")
-    servo_center_deg: 90.0        # wheels straight; = joystick_node's STEER_ORIGIN and the servo's position after reset
-    servo_deg_per_rad: 57.2958    # servo deg per rad of road-wheel angle; 1:1 until measured; negative flips
+    servo_center_deg: 89.0        # wheels straight (midpoint of the ±90° horn measurement); = joystick_node's STEER_ORIGIN
+    servo_deg_per_rad: 41.38      # servo command deg per rad of road-wheel angle: 130 steps per 180° of horn (24 -> 154),
+                                  # wheel angle = horn angle. Positive: a higher command steers left (confirmed 2026-11-14)
     servo_min_deg: 0.0
     servo_max_deg: 180.0
     pwm_per_mps: 73.3333          # 110 PWM / 1.5 m/s: the controller's V_LIMIT maps to joystick_node's MAX_PWM
