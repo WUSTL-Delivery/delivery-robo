@@ -34,9 +34,8 @@ VS Code: "Dev Containers: Reopen in Container" uses `.devcontainer/devcontainer.
 ## Running on the Pi
 
 The Pi pulls a published image; it does not build. Pin the tag you run in `.env` next to
-`compose.yaml` (gitignored): the first 7 characters of the commit, e.g. `ROBOT_TAG=91b6ea5`
-(`git rev-parse --short=7 HEAD`). While the package is private, the Pi needs
-`docker login ghcr.io` with a token that has `read:packages`. Then:
+`compose.yaml` (gitignored): the first 7 characters of the commit, e.g. `ROBOT_TAG=331d1c0`
+(`git rev-parse --short=7 HEAD`). The package is public, so pulling needs no login. Then:
 
 ```sh
 docker compose pull robot
