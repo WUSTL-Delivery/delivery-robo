@@ -55,7 +55,7 @@ planner_server:
       #    ahead, or 0.2 m and < ~0.9 m) comes back as a ~12 m loop, not a
       #    failure. local_planner must not replan inside ~2 m of its final goal.
       motion_model_for_search: "DUBIN"
-      minimum_turning_radius: 1.0     # m; real robot 0.83, sim 0.73, so the follower keeps margin
+      minimum_turning_radius: 1.0     # m; real robot 0.89, sim 0.73, so the follower keeps margin
       angle_quantization_bins: 72     # 5 deg heading bins
       # Search + smoothing share this budget. local_planner replans every 0.5 s
       # with one request in flight, so a slower plan only skips replans.

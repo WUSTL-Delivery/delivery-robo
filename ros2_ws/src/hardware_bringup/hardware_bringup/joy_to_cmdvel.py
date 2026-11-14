@@ -47,7 +47,7 @@ class JoyToCmdVel(Node):
         self._geom = DriveGeometry(
             wheelbase=float(p('wheelbase', 0.38735)),
             min_speed_for_steer=float(p('min_speed_for_steer', 0.05)),
-            max_steer_rad=float(p('max_steer_rad', 0.4363)),
+            max_steer_rad=float(p('max_steer_rad', 0.4108)),
         )
         self._enable_button = int(p('enable_button', 4))
         self._require_enable = bool(p('require_enable_button', True))

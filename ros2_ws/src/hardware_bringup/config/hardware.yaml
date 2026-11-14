@@ -11,7 +11,8 @@
     wheelbase: 0.38735            # m, rear axle to front axle: 15 1/4 in, tape-measured 2026-11-14
                                   # Also MPPI's model: the yaw rate it sends is converted back with this
     min_speed_for_steer: 0.05     # m/s floor for the yaw-rate <-> steering conversion (stick steers at standstill)
-    max_steer_rad: 0.4363         # rad road-wheel limit = 25 deg, joystick_node's range. Also MPPI's steering limit
+    max_steer_rad: 0.4108         # rad road-wheel limit: 17 servo steps from the 94 centre (mechanical stops 75/115
+                                  # minus 2 steps), = joystick_node's MAX_STEER. Also MPPI's steering limit
 
 arduino_bridge:
   ros__parameters:
@@ -30,11 +31,12 @@ arduino_bridge:
     min_encoder_dt: 0.02          # replies closer than this are merged (firmware stalls bunch them)
     max_encoder_dt: 0.5           # gaps longer than this are not differentiated across. A gap this long misreads
                                   # speeds above 0.53 m/s, hence the 0.5 m/s caps (README "Encoder speed limit")
-    servo_center_deg: 89.0        # wheels straight (midpoint of the ±90° horn measurement); = joystick_node's STEER_ORIGIN
+    servo_center_deg: 94.0        # wheels straight: centre of the linkage play, stops nearly symmetric (75/115) about
+                                  # it. = joystick_node's STEER_ORIGIN
     servo_deg_per_rad: 41.38      # servo command deg per rad of road-wheel angle: 130 steps per 180° of horn (24 -> 154),
                                   # wheel angle = horn angle. Positive: a higher command steers left (confirmed 2026-11-14)
-    servo_min_deg: 0.0
-    servo_max_deg: 180.0
+    servo_min_deg: 77.0           # mechanical limits, linkage on: free to 75 (right) and 115 (left), 2 steps of margin
+    servo_max_deg: 113.0          # each. The bridge's last clamp; beyond this the linkage binds (measured 2026-11-14)
     pwm_per_mps: 73.3333          # 110 PWM / 1.5 m/s: the controller's V_LIMIT maps to joystick_node's MAX_PWM
     pwm_limit: 110                # joystick_node's MAX_PWM (firmware accepts up to 255)
     gear_ratio: 0.833333333333    # 10-tooth motor gear / 12-tooth wheel-axle gear; AS5047P reads the motor shaft

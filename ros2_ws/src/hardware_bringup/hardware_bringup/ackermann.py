@@ -22,12 +22,12 @@ import math
 class DriveGeometry:
     wheelbase: float = 0.38735          # m, rear axle to front axle (15 1/4 in, tape-measured)
     min_speed_for_steer: float = 0.05   # m/s floor used when converting yaw rate <-> steering
-    max_steer_rad: float = 0.4363       # rad road-wheel limit (25 deg = joystick_node's range)
+    max_steer_rad: float = 0.4108       # rad road-wheel limit (17 servo steps = joystick_node's MAX_STEER)
 
 
 @dataclass(frozen=True)
 class ServoMap:
-    center_deg: float = 89.0                  # servo command that points the wheels straight
+    center_deg: float = 94.0                  # servo command that points the wheels straight
     deg_per_rad: float = 41.38                # servo command deg per rad of road-wheel angle (< 0 flips)
     min_deg: float = 0.0
     max_deg: float = 180.0

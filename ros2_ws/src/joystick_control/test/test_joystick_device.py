@@ -93,7 +93,7 @@ def test_write_failure_closes_the_port_for_the_retry(present, make_node):
     node = make_node()
     node.stored_msg = Joy(axes=[0.0, 0.5, 0.0], buttons=[])
     node.timer_callback()
-    assert node.ser.written == [b'm 55.00 89.00\r']
+    assert node.ser.written == [b'm 55.00 94.00\r']
     node.ser.fail_writes = True
     node.timer_callback()
     assert node.ser is None

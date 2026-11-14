@@ -120,13 +120,13 @@ class ArduinoBridge(Node):
         self._geom = DriveGeometry(
             wheelbase=float(p('wheelbase', 0.38735)),
             min_speed_for_steer=float(p('min_speed_for_steer', 0.05)),
-            max_steer_rad=float(p('max_steer_rad', 0.4363)),
+            max_steer_rad=float(p('max_steer_rad', 0.4108)),
         )
         self._servo = ServoMap(
-            center_deg=float(p('servo_center_deg', 89.0)),
+            center_deg=float(p('servo_center_deg', 94.0)),
             deg_per_rad=float(p('servo_deg_per_rad', 41.38)),
-            min_deg=float(p('servo_min_deg', 0.0)),
-            max_deg=float(p('servo_max_deg', 180.0)),
+            min_deg=float(p('servo_min_deg', 77.0)),
+            max_deg=float(p('servo_max_deg', 113.0)),
         )
         self._drive = DriveMap(
             pwm_per_mps=float(p('pwm_per_mps', 110.0 / 1.5)),
