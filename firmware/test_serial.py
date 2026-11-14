@@ -3,7 +3,9 @@
 import serial
 import time
 
-PORT = "/dev/ttyUSB0"   # change if needed (e.g., COM3 on Windows)
+# /dev/motor = the board's udev symlink on the robot (deployment/udev/99-motor.rules); /dev/ttyUSB0
+# there may be the lidar. Change if needed (e.g., /dev/ttyUSB0 on a laptop, COM3 on Windows).
+PORT = "/dev/motor"
 BAUD = 57600            # must match Serial.begin() on Arduino
 
 # open the serial connection

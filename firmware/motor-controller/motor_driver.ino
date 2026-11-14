@@ -41,7 +41,7 @@ void motorInit() {
     digitalWrite(TURN_SERVO, LOW);  // Ensure LOW before attach
     delay(100);
     turnServo.attach(TURN_SERVO);
-    turnServo.write(90); 
+    // turnServo.write(90); 
     // pinMode(TURN_MOTOR_PWM, OUTPUT);
     // pinMode(TURN_MOTOR_IN1, OUTPUT);
     // pinMode(TURN_MOTOR_IN2, OUTPUT);

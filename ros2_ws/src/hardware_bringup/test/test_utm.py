@@ -1,11 +1,11 @@
 """UTM projection and grid-convergence tests. Cross-checked against pyproj when available."""
 import math
 
+from hardware_bringup.utm import grid_convergence, latlon_to_utm, utm_zone_from_lon
 import pytest
 
-from hardware_bringup.utm import grid_convergence, latlon_to_utm, utm_zone_from_lon
-
-# WashU east end; the planner's bounding box is roughly lat 38.6473-38.6490, lon -90.3041 - -90.3013
+# WashU east end; the planner's bounding box is roughly lat 38.6473-38.6490,
+# lon -90.3041 - -90.3013
 CAMPUS_POINTS = [
     (38.648000, -90.302500),
     (38.64817527, -90.30128152),  # Gazebo world datum

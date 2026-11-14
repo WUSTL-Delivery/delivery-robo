@@ -1,7 +1,7 @@
 """Geometry and timestamp selection for a virtual obstacle scan, without ROS."""
 
-import math
 from dataclasses import dataclass
+import math
 
 import numpy as np
 

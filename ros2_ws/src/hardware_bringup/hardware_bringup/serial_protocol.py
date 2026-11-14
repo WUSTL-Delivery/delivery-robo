@@ -1,12 +1,13 @@
-"""Line protocol of ``firmware/motor-controller`` (57600 baud, ``\\r``-terminated).
+r"""
+Line protocol of ``firmware/motor-controller`` (57600 baud, ``\r``-terminated).
 
 Commands the bridge uses::
 
-    m <pwm> <servo_deg>\\r   set drive PWM (-255..255, sign = direction) and servo angle (0..180)
-    e\\r                     reply: the cumulative encoder count as a bare integer line
+    m <pwm> <servo_deg>\r   set drive PWM (-255..255, sign = direction) and servo angle (0..180)
+    e\r                     reply: the cumulative encoder count as a bare integer line
 
 The firmware also prints debug chatter (``ddd Parsed - Vel: ...`` before every command and
-``Parsed - Vel: ...`` after every ``m``) and ``X\\r`` on a parse error, so replies are found by
+``Parsed - Vel: ...`` after every ``m``) and ``X\r`` on a parse error, so replies are found by
 shape (an integer on a line of its own), never by position.
 """
 import re
@@ -35,14 +36,22 @@ def is_error_response(line):
 
 
 class LineSplitter:
-    """Incremental splitter tolerant of ``\\r\\n``, lone ``\\r`` (the error reply) and lone ``\\n``."""
+    r"""
+    Incremental line splitter.
+
+    Tolerant of ``\r\n``, lone ``\r`` (the error reply) and lone ``\n``.
+    """
 
     def __init__(self, max_buffer=4096):
         self._buf = bytearray()
         self.max_buffer = max_buffer
 
     def feed(self, data):
-        """Append ``data``; return the complete, non-empty lines it produced (terminators stripped)."""
+        """
+        Append ``data``; return the complete, non-empty lines it produced.
+
+        Line terminators are stripped.
+        """
         self._buf.extend(data)
         parts = _LINE_END.split(bytes(self._buf))
         self._buf = bytearray(parts[-1])          # trailing partial line, possibly empty

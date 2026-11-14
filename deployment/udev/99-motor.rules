@@ -1,0 +1,32 @@
+# Motor-controller board (Arduino, drive motor + steering servo + wheel encoder) -> /dev/motor
+#
+# The board talks through a WCH CH340-family USB-serial bridge (idVendor 1a86;
+# on the robot Pi it shows up as /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0)
+# at 57600 baud. Everything that drives the motors opens /dev/motor, never a
+# raw /dev/ttyUSBn: the RPLidar C1 (a CP2102, 10c4:ea60 -> /dev/rplidar, see
+# 99-rplidar.rules) is also a /dev/ttyUSBn, and which of the two gets ttyUSB0
+# depends on plug order. Users: joystick_control joystick_node (`device`,
+# teleop), hardware_bringup arduino_bridge (`port`, autonomy), wheel_encoder
+# wheel_encoder_node (`port`, bench only).
+#
+# Install: sudo deployment/udev/install_udev.sh   (see deployment/README.md)
+#
+# ONLY ONE CH340 DEVICE MAY BE ON THE ROBOT. The CH340 has no USB serial
+# number, so two of them (e.g. a second Arduino-Nano clone) look identical to
+# udev and would fight over /dev/motor. Plug any other CH340 board in only
+# while this one is unplugged.
+#
+# idProduct: 7523, 7522 and 5523 are every WCH (1a86) id the kernel's ch341
+# driver binds (`modinfo ch341`), and the board's by-id name ends in "-port0",
+# i.e. it is bound to that usb-serial driver. The exact id was not captured;
+# confirm it on the Pi with
+#   udevadm info -q property -n /dev/motor | grep ID_MODEL_ID
+# The id is matched, not just the vendor, because ATTRS{} walks up the parent
+# devices: a vendor-only rule would also fire for anything plugged in behind a
+# WCH USB hub chip (also vendor 1a86), the lidar included.
+#
+# MODE 0666 lets the nodes open the port before the robot user's dialout
+# membership takes effect (needs a re-login); dialout is still added by the
+# install script.
+
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523|7522|5523", SYMLINK+="motor", MODE="0666", GROUP="dialout"

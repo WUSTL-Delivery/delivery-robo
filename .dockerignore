@@ -1,0 +1,11 @@
+# Build context: only what docker/Dockerfile copies.
+*
+!docker/
+!deployment/requirements.lock
+!deployment/rosdep.yaml
+!ros2_ws/src/
+**/.git
+**/build/
+**/install/
+**/log/
+**/__pycache__/

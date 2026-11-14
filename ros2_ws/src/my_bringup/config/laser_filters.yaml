@@ -5,8 +5,11 @@
 #
 # Requires: sudo apt install ros-jazzy-laser-filters
 #
-# Filters run in order: filter1, filter2, ... Removed returns become NaN,
-# which Nav2 costmaps / slam treat as "no return".
+# Filters run in order: filter1, filter2, ... Removed returns become NaN
+# ("no data": neither marks nor clears). No-return bins stay +inf (TDM-27):
+# sllidar_ros2 publishes +inf when the C1 sees nothing (dist 0), and a costmap
+# source with inf_is_valid: true raytraces those as free space out to
+# raytrace_max_range, so obstacles that move away in open areas get cleared.
 scan_to_scan_filter_chain:
   ros__parameters:
     # 1) Chassis self-hits. Box is expressed in base_link, so it needs the
@@ -34,10 +37,23 @@ scan_to_scan_filter_chain:
 
     # 2) Near-field junk: anything closer than 0.15 m to the lidar is a
     #    self-hit / dust / mount reflection. Dropped returns become NaN.
+    #    LaserScanRangeFilter (laser_filters 2.0.10, range_filter.h) does
+    #      r <= lower_threshold -> lower_replacement_value
+    #      r >= upper_threshold -> upper_replacement_value
+    #    Set BOTH replacement values explicitly: range_filter.h means NaN as
+    #    the default, but the ROS 2 filters getParam declares unset doubles
+    #    as 0.0, so unset they were 0.0 and every no-return (+inf >= any
+    #    upper_threshold) came out as 0.0 (TDM-27). .inf keeps no-returns inf.
+    #    NaN fails both comparisons, so filter1's NaNs pass through unchanged;
+    #    finite returns past range_max (the C1 can report them) are kept too.
+    #    filter1 never touches inf bins: laser_geometry skips ranges outside
+    #    [range_min, range_max) when projecting.
     filter2:
       name: min_range
       type: laser_filters/LaserScanRangeFilter
       params:
         use_message_range_limits: false
         lower_threshold: 0.15
+        lower_replacement_value: .nan   # too close -> no data
         upper_threshold: 100000.0
+        upper_replacement_value: .inf   # no return (+inf) stays +inf

@@ -1,0 +1,40 @@
+# dev: development container for laptops. robot: the runtime the Pi runs. See docker/README.md.
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+      args:
+        UID: ${HOST_UID:-1000}
+        GID: ${HOST_GID:-1000}
+    image: delivery-robo-dev
+    volumes:
+      - .:/home/dev/delivery-robo
+    command: sleep infinity
+
+  robot:
+    image: ghcr.io/wustl-delivery/delivery-robo:${ROBOT_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: runtime
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+    network_mode: host  # DDS discovery with laptops on the same network; real hostname and IPs
+    ipc: host
+    privileged: true    # hot-plugged serial and USB devices (lidar, motor board, RealSense, u-blox)
+    volumes:
+      - /dev:/dev
+      - /etc/udev/rules.d:/etc/udev/rules.d:ro  # the nodes' "udev rule not installed" hints
+      - ./deployment:/repo/deployment:ro
+      - planner_cache:/root/.cache/delivery_autonomy  # global_planner's osmnx Overpass cache
+                                                        # (ros2_ws/src/hardware_bringup/launch/
+                                                        # autonomy_real.launch.py planner_cache_dir):
+                                                        # survives container recreation, so repeat
+                                                        # starts don't re-query Overpass and hit its
+                                                        # rate limit (`docker compose run` too)
+    restart: unless-stopped
+
+volumes:
+  planner_cache:

@@ -50,7 +50,8 @@ camera:
 
 # my_bringup/depth_obstacles.py: depth image -> /camera/obstacles (PointCloud2,
 # depth optical frame) + /camera/scan (LaserScan, base_link) for the costmap.
-# Heights are measured in ground_frame, where z = 0 is the floor.
+# Heights are measured in ground_frame, where z = 0 is the floor
+# (base_footprint: URDF child of base_link, wheel_radius below it).
 depth_obstacles:
   ros__parameters:
     depth_topic: /camera/depth/image_rect_raw

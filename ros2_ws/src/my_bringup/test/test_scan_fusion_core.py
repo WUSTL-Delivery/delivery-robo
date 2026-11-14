@@ -1,20 +1,20 @@
 """Exercise obstacle geometry, invalid returns, pairing and model alignment."""
 
-import math
-import xml.etree.ElementTree as ET
 from dataclasses import replace
+import math
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
-import numpy as np
-import pytest
 from my_bringup.scan_fusion_core import (
-    ScanGrid,
-    ScanSample,
     closest_sample,
     fuse_hits,
     is_fresh,
     project_hits,
+    ScanGrid,
+    ScanSample,
 )
+import numpy as np
+import pytest
 
 
 def scan(ranges, angle_min=0.0, angle_increment=math.pi / 2, stamp_ns=1_000_000_000):
@@ -54,8 +54,9 @@ def test_rotation_and_translation():
 def test_current_model_aligns_a_shared_wall():
     # Read actual model properties; never apply this mount again to /camera/scan.
     model = Path(__file__).resolve().parents[2] / 'robot_description/urdf/robot.urdf.xacro'
-    properties = {p.attrib['name']: float(p.attrib['value'])
-                  for p in ET.parse(model).getroot().findall('{http://ros.org/wiki/xacro}property')}
+    properties = {
+        p.attrib['name']: float(p.attrib['value'])
+        for p in ET.parse(model).getroot().findall('{http://ros.org/wiki/xacro}property')}
     lidar_mount = transform(properties['lidar_x'], properties['lidar_y'],
                             properties['lidar_z'], properties['lidar_yaw'])
     camera_mount = transform(properties['camera_x'], properties['camera_y'],
