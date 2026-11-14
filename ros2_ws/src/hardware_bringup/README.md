@@ -20,7 +20,7 @@ override them at any moment, and one node owns the Arduino's serial port.
 
 | Node | What it does |
 |---|---|
-| `arduino_bridge` | Sole owner of the serial port. `/cmd_vel_out` → `m <pwm> <servo>`; polls `e` at 20 Hz → `/odom` (twist only) and `/wheel_ticks`; watchdog stops the motor 0.5 s after the last command; rejects NaN; publishes the command it really sent on `/cmd_vel_executed`. |
+| `arduino_bridge` | Sole owner of the serial port. `/cmd_vel_out` → `m <pwm> <servo>`; polls `e` at 20 Hz → `/odom` (twist only), `/wheel_ticks` (raw motor-shaft angle, 0-360°) and `/wheel_angle` (cumulative wheel-axle angle); watchdog stops the motor 0.5 s after the last command; rejects NaN; publishes the command it really sent on `/cmd_vel_executed`. |
 | `joy_to_cmdvel` | Joy → Twist on `/cmd_vel_joy` while the enable button is held. Same stick mapping and servo range as `joystick_node`. No joystick present → zeros at top priority (robot held stopped). |
 | `twist_mux` | Upstream package. Joystick beats controller; a source drops out 0.5 s after it stops publishing. It never publishes zeros itself, which is why the bridge has the watchdog. Lock `obstacle_sensors` (priority 50, on `/obstacle_sensors_lock`) blocks the controller and lets the joystick through. |
 | `obstacle_guard` | TDM-52. Locks `obstacle_sensors` while neither the lidar (`/scan_filtered`) nor the depth camera (`/camera/scan`) has published for 1 s, see [Missing obstacle sensors](#missing-obstacle-sensors). |
@@ -116,7 +116,7 @@ the launch file's `nav2` argument. All but the two topics can be changed at runt
 
 | Parameter | Robot | Default | Why |
 |---|---|---|---|
-| `max_speed` | **1.0** | 1.5 | m/s. Cruise speed, and the cap on every forward command. 1.5 is the joystick's full stick (`pwm_limit` / `pwm_per_mps`), and `pwm_per_mps` is still a guess on an open-loop drive, so nobody knows how fast 1.5 really is. Start lower. MPPI accepts (0, 1.5]. |
+| `max_speed` | **0.5** | 1.5 | m/s. Cruise speed, and the cap on every forward command. Kept at 0.5, like `joy_to_cmdvel`'s `max_speed`, because the drive encoder misreads speeds above 0.53 m/s (see "Encoder speed limit" under [Known limits](#known-limits)). `pwm_per_mps` is still a guess on an open-loop drive, so until it is calibrated nobody knows how fast 0.5 really is. MPPI accepts (0, 1.5]. |
 | `min_speed` | **0.0** | -0.5 | m/s. The robot never reverses. Nav2's Hybrid-A\* paths are Dubins (no reversing), and nothing behind the robot is checked. At 1.5 m/s with -0.5, the TDM-33 sim runs had 3-4 stray reverse commands per run (down to -0.13 m/s). In the TDM-34 sim at 1.0 m/s, neither value produced a reverse command, and 0.0 changed neither the goal accuracy nor the box behaviour (see "Sim recipe"). Range [-0.5, 0]. |
 | `stop_distance` | **0.2** | 0.35 | m. The robot stops for an inscribed or lethal costmap cell that is near the path ahead: the path passes within this distance of it, and the robot gets closer to it. The limit falls linearly from `max_speed` at `slow_distance`, never below `obstacle_creep_speed`, and is 0 at `stop_distance`. So the robot creeps up to 0.2 m from such a cell at 0.15 m/s and stops there. Until TDM-40 anything under 0.05 m/s counted as a stop, which halted it at 0.2 + 0.05 × 1.8 / 1.0 = 0.29 m. Inside 0.2 m (TDM-42) it moves only on a path that leads straight away from the nearest such cell, and no faster than `obstacle_creep_speed`, so it no longer creeps along beside an obstacle. The limit goes by every such cell of the last second of costmaps. With 0.35, an obstacle centred in a 3 m corridor (two 1.2 m gaps) stops the robot until someone moves it. With 0.2 the robot got past such a box in 3 of 8 TDM-42 sim runs (0.189-0.215 m from it) and stopped 0.196-0.209 m from it in the other 5 (see "Sim recipe"). The user approved 0.2 on 2026-10-16. |
 | `use_costmap` | `nav2:=` | true | Slow down and stop for costmap obstacles near the path, and let MPPI pay for costmap cells. Set by the launch file: true only when Nav2 runs. Without a costmap the controller would cap itself at `crawl_speed`. |
@@ -474,7 +474,7 @@ needs no slack for them; or a smaller `stop_distance`, which is the user's call.
    continuously (`-r 10`), not `-1`: a single message is cancelled by the 0.5 s watchdog. Ctrl-C
    the publisher: the motor must stop within 0.5 s and the log says `no command for 0.50 s`.
 3. **Odometry.** `ros2 topic echo /odom` while spinning a wheel by hand: `twist.linear.x` must be
-   positive when the wheel turns forward. If negative, make `metres_per_tick` negative.
+   positive when the wheel turns forward. If negative, flip `encoder_direction` (1 ↔ -1).
 4. **Joystick.** `ros2 topic echo /joy`, press the intended deadman button and read its index
    into `enable_button` (4 is LB/L1 on Xbox and PlayStation pads under `joy_node`; the sim's 9
    is a stick click there). With the button held, the stick must move the servo and motor and
@@ -494,13 +494,13 @@ Every value here was guessed from code that contradicts itself; measure each one
 
 | Parameter | How |
 |---|---|
-| `metres_per_tick` | Push the robot a tape-measured 10 m in a straight line. `ros2 topic echo /wheel_ticks` before and after; divide. Sign: positive if the count grew while going forward. |
+| `wheel_radius_m`, `gear_ratio` | `gear_ratio` is motor-gear teeth / wheel-gear teeth (10/12): count the teeth. Then push the robot a tape-measured distance (10 m) in a straight line, slowly (under 0.5 m/s, see "Encoder speed limit" under [Known limits](#known-limits)), with the bridge running. Read `/wheel_angle` before and after: `wheel_radius_m` = distance / radians(Δ`/wheel_angle`), the loaded rolling radius. The push measures only the product `gear_ratio` × `wheel_radius_m`, so a wrong tooth count ends up in the radius. Not `/wheel_ticks`: it is the raw AS5047P motor-shaft angle, 0-360°, and wraps every 0.53 m. |
 | `servo_center_deg` | Front jacked up. Publish `/cmd_vel_out` (`-r 10`) with `x: 0.3` and `z: 0.0` while adjusting the value until the wheels point straight. The deployed `joystick_node` used 45; the firmware uses 90. |
 | `servo_deg_per_rad`, `max_steer_rad` | Command a known yaw rate at a known speed (δ = atan(ω·L/v)), read the road-wheel angle with a protractor, take the ratio servo-degrees/road-radian. `max_steer_rad` is the mechanical limit of the linkage. `joy_to_cmdvel` and the controller read the same shared `/**` value. |
-| `pwm_per_mps`, `pwm_limit` | On the ground, publish (`-r 10`) `x:` 0.3, 0.6, 0.9, 1.2, 1.5 m/s in turn and read the steady `/odom` speed for each; fit a line through PWM (= x·pwm_per_mps) versus measured speed and update `pwm_per_mps`. `pwm_limit` caps the drive (110 = today's joystick cap; firmware accepts 255). The drive is open loop, so the fit is the speed control. |
+| `pwm_per_mps`, `pwm_limit` | On the ground, publish (`-r 10`) `x:` 0.1, 0.2, 0.3, 0.4, 0.5 m/s in turn and read the steady `/odom` speed for each; fit a line through PWM (= x·pwm_per_mps) versus measured speed and update `pwm_per_mps`. Stop if `/odom` goes above 0.5 m/s: the encoder misreads speeds above 0.53 m/s. `pwm_limit` caps the drive (110 = today's joystick cap; firmware accepts 255). The drive is open loop, so the fit is the speed control. |
 | `wheelbase` | Tape measure, rear axle centre to front axle centre. The URDF says 0.36322, the HAL 0.30. The MPPI controller's model reads the same `/**` value, so one measurement fixes both. |
-| `steer_tau`, `drive_tau`, `max_accel` (`controller_server`) | Unmeasured, the controller keeps the sim car's fit. On the ground, step `/cmd_vel_out` from 0 to 1.0 m/s straight ahead: the slope at the start of the `/odom` speed is `max_accel`, the time constant of its approach to the final speed `drive_tau`. Then at a steady 0.5 m/s step the steering and fit the time constant of the yaw rate on `/imu/data` for `steer_tau`. Not `/odom`'s yaw rate: it is computed from the command (see "Known limits"). Write the values into `controller_server`. |
-| IMU covariances | `ros2 run imu_package imu_covariance_estimator` while driving, then paste into `imu_node.py`. The committed values were measured at rest. |
+| `steer_tau`, `drive_tau`, `max_accel` (`controller_server`) | Unmeasured, the controller keeps the sim car's fit. After `pwm_per_mps`, on the ground, step `/cmd_vel_out` from 0 to 0.5 m/s straight ahead: the slope at the start of the `/odom` speed is `max_accel`, the time constant of its approach to the final speed `drive_tau`. Then at a steady 0.5 m/s step the steering and fit the time constant of the yaw rate on `/imu/data` for `steer_tau`. Not `/odom`'s yaw rate: it is computed from the command (see "Known limits"). Write the values into `controller_server`. Only MPPI uses them: the EKF's model stays the sim car's (see "Known limits"). |
+| IMU covariances | `ros2 run imu_package imu_covariance_estimator` while driving, then paste into `imu_node.py`. The committed values were measured at rest. The autonomy stack does not read them: `state_estimation` ignores message covariances and uses its own constant `R` (delivery-autonomy `sensors.py`, see "EKF tuning" under [Known limits](#known-limits)). |
 
 ## Known limits
 
@@ -518,6 +518,15 @@ Every value here was guessed from code that contradicts itself; measure each one
 - **Yaw rate on `/odom` is synthesised** from the commanded steering angle (one drive encoder, no
   steering feedback), so that channel partly confirms the EKF's own prediction. A steering angle
   sensor is the real fix.
+- **Encoder speed limit.** The AS5047P reads the motor shaft's absolute angle (0-360°), so the
+  bridge takes the shorter way round between two replies. More than half a motor turn between
+  them (0.266 m of travel: 2π × `wheel_radius_m` × `gear_ratio` / 2) reads as the opposite way.
+  At the 20 Hz poll that would take 5.3 m/s, but `max_encoder_dt` lets the bridge difference
+  across firmware stalls of up to 0.5 s. Above 0.53 m/s (0.266 m / 0.5 s) such a stall gives a wrong `/odom`
+  speed, often negative (1.0 m/s across a 0.3 s gap reads -0.77 m/s), and the EKF takes it as a
+  measurement. Both speed caps, `controller_server` and `joy_to_cmdvel` `max_speed`, are 0.5 m/s
+  for that reason. `pwm_limit` is not: a command published straight onto `/cmd_vel_out` can still
+  go faster. Driving faster needs `max_encoder_dt` below 0.266 m / top speed.
 - **MPPI.** K=3000 rollouts × T=50 at 10 Hz; `bench_mppi` decides whether the Pi can. `K` lives in
   tangled code (`docs/20260109142710-delivery.org` in delivery-autonomy).
 - **MPPI's lags are the sim car's.** Since delivery-autonomy TDM-41 the controller models the
