@@ -1,5 +1,10 @@
 # IMU Publisher Node — Documentation
 
+For the current magnetometer topic, SSH setup, recording commands, and units,
+see [MAGNETOMETER.md](MAGNETOMETER.md). The driver now publishes `/imu/mag`
+at 10 Hz alongside `/imu/data` at 50 Hz; older examples below show the original
+10 Hz IMU-only implementation.
+
 ## Overview
 
 This document explains the `imu_package` IMU publisher node: what it does, why it exists, how it is structured, and how data flows from the physical sensor into ROS2. It is intended for anyone who wants to understand how the robot's inertial measurements are exposed to the rest of the system without reading the code first.
