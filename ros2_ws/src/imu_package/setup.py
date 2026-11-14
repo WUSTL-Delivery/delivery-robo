@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'imu_publisher = imu_package.imu_node:main',
             'imu_covariance_estimator = imu_package.imu_covariance_estimator:main',
+            'calibrate_magnetometer = imu_package.calibrate_magnetometer:main',
         ],
     },
 )
