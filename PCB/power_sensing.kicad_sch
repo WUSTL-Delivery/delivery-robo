@@ -689,6 +689,12 @@
 		)
 	)
 	(junction
+		(at 63.5 38.1)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "352a920a-365a-4ca5-8822-edd9eca08c2c")
+	)
+	(junction
 		(at 43.18 69.85)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -699,6 +705,16 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "9630bad7-c76e-4a31-aad3-128d747f9b09")
+	)
+	(wire
+		(pts
+			(xy 78.74 40.64) (xy 82.55 40.64)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3d0dbe20-0c24-4fbe-ae7c-58abd263e766")
 	)
 	(wire
 		(pts
@@ -742,7 +758,17 @@
 	)
 	(wire
 		(pts
-			(xy 63.5 38.1) (xy 63.5 40.64)
+			(xy 63.5 38.1) (xy 82.55 38.1)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "630b95f4-1f24-4c0a-9f8d-28bc84db2410")
+	)
+	(wire
+		(pts
+			(xy 63.5 27.94) (xy 63.5 38.1)
 		)
 		(stroke
 			(width 0)
@@ -772,6 +798,16 @@
 	)
 	(wire
 		(pts
+			(xy 63.5 38.1) (xy 63.5 40.64)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "be454e6a-7035-4531-af8a-59323f9f5b6e")
+	)
+	(wire
+		(pts
 			(xy 45.72 69.85) (xy 43.18 69.85)
 		)
 		(stroke
@@ -792,7 +828,7 @@
 	)
 	(hierarchical_label "VBAT_LOGIC"
 		(shape output)
-		(at 63.5 38.1 0)
+		(at 63.5 27.94 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1227,6 +1263,165 @@
 			(project "Robotics"
 				(path "/67ad40c0-2866-4144-a6f5-463f1ef11bae/6f8abe9b-dba8-48ea-bcd8-1cb0d3da9945"
 					(reference "#PWR02")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector_Generic:Conn_01x02")
+		(at 87.63 38.1 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "e801e219-985e-43ab-9af3-6969351ca319")
+		(property "Reference" "J19"
+			(at 85.598 34.29 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "AUX REG OUT"
+			(at 90.17 40.6399 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal"
+			(at 87.63 38.1 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 87.63 38.1 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "To off-board inline 3 A fuse → XY-3606 → USB hub and router."
+			(at 87.63 38.1 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "3902e247-d748-4411-a183-f0677e917b5b")
+		)
+		(pin "2"
+			(uuid "6faa222d-1305-4c74-a577-d10db6ddf2f8")
+		)
+		(instances
+			(project "Robotics"
+				(path "/67ad40c0-2866-4144-a6f5-463f1ef11bae/6f8abe9b-dba8-48ea-bcd8-1cb0d3da9945"
+					(reference "J19")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 78.74 40.64 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "f5ea1ed4-7b33-4c7e-bc3e-091effbb6548")
+		(property "Reference" "#PWR01"
+			(at 78.74 46.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 78.74 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 78.74 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 78.74 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 78.74 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "8bb5b9d8-5044-4ee4-95c2-5755cd55defa")
+		)
+		(instances
+			(project "Robotics"
+				(path "/67ad40c0-2866-4144-a6f5-463f1ef11bae/6f8abe9b-dba8-48ea-bcd8-1cb0d3da9945"
+					(reference "#PWR01")
 					(unit 1)
 				)
 			)
