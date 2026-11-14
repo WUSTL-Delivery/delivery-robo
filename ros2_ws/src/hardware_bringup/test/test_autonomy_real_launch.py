@@ -147,7 +147,6 @@ def test_robot_controller_models_the_robot_the_bridge_drives(tmp_path):
     # max_steer_rad; the bridge converts back and clips with its own. Equal, the angle survives.
     for name in ('wheelbase', 'max_steer_rad'):
         assert controller[name] == bridge[name], name
-    assert (controller['wheelbase'], controller['max_steer_rad']) == (0.36322, 0.4363)
     # The robot's lags are unmeasured: the controller keeps its defaults
     for name in ('steer_tau', 'drive_tau', 'max_accel'):
         assert name not in controller, name

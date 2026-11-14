@@ -8,7 +8,7 @@
 
 /**:
   ros__parameters:
-    wheelbase: 0.36322            # m, rear axle to front axle. URDF: 0.36322, HAL: 0.30. Tape-measure it.
+    wheelbase: 0.38735            # m, rear axle to front axle: 15 1/4 in, tape-measured 2026-11-14
                                   # Also MPPI's model: the yaw rate it sends is converted back with this
     min_speed_for_steer: 0.05     # m/s floor for the yaw-rate <-> steering conversion (stick steers at standstill)
     max_steer_rad: 0.4363         # rad road-wheel limit = 25 deg, joystick_node's range. Also MPPI's steering limit
@@ -30,7 +30,7 @@ arduino_bridge:
     min_encoder_dt: 0.02          # replies closer than this are merged (firmware stalls bunch them)
     max_encoder_dt: 0.5           # gaps longer than this are not differentiated across. A gap this long misreads
                                   # speeds above 0.53 m/s, hence the 0.5 m/s caps (README "Encoder speed limit")
-    servo_center_deg: 45.0        # joystick_node's STEER_ORIGIN. firmware/HAL say 90: resolve on the bench
+    servo_center_deg: 90.0        # wheels straight; = joystick_node's STEER_ORIGIN and the servo's position after reset
     servo_deg_per_rad: 57.2958    # servo deg per rad of road-wheel angle; 1:1 until measured; negative flips
     servo_min_deg: 0.0
     servo_max_deg: 180.0

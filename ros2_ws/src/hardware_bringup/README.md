@@ -129,15 +129,15 @@ the launch file's `nav2` argument. All but the two topics can be changed at runt
 | `goal_creep_speed` | 0.15 | 0.15 | m/s. The taper's floor, so the robot still reaches the end. |
 | `xy_goal_tolerance` | **0.5** | 0.25 | m (EKF). The goal is reached within this distance of the path's end (and within `yaw_goal_tolerance` of its heading). Since TDM-43 the controller also ends the goal when the robot reaches the end of the path: reached within this distance at any heading, aborted beyond it. 0.5 is local_planner's `goal_tolerance`, so both stop the robot at the same distance. On the Oct 24 Pi test (RTK float, IMU yaw bias) 0.25 m together with the heading check missed the goal and the robot drove on past it. Must be positive. |
 | `yaw_goal_tolerance` | **3.15** | 0.15 | rad. Heading error allowed at the goal; ≥ π (3.15) turns the heading check off. The robot delivers to a point and needs no heading there, and in the Oct 24 replay a heading miss (12.4° with RTK float) was what kept it from stopping. Must be positive. |
-| `wheelbase` | **0.36322** (`/**`) | 0.5 | m. MPPI's vehicle model, and the conversion of its steering angle into the yaw rate it sends. `arduino_bridge` converts back with the same `/**` value, so the robot steers the angle MPPI planned. The sim gets the Gazebo car's 0.5. |
-| `max_steer_rad` | **0.4363** (`/**`) | 0.6 | rad. MPPI samples steering within ±this, and the command is clipped to it. It is the bridge's own limit, so MPPI plans only turns the robot can make: 0.78 m radius at the tightest, where the sim car's 0.6 rad meant 0.73 m. The sim gets 0.6. Range (0, π/2). |
+| `wheelbase` | **0.38735** (`/**`) | 0.5 | m, 15 1/4 in, tape-measured. MPPI's vehicle model, and the conversion of its steering angle into the yaw rate it sends. `arduino_bridge` converts back with the same `/**` value, so the robot steers the angle MPPI planned. The sim gets the Gazebo car's 0.5. |
+| `max_steer_rad` | **0.4363** (`/**`) | 0.6 | rad. MPPI samples steering within ±this, and the command is clipped to it. It is the bridge's own limit, so MPPI plans only turns the robot can make: 0.83 m radius at the tightest, where the sim car's 0.6 rad meant 0.73 m. The sim gets 0.6. Range (0, π/2). |
 | `steer_tau`, `drive_tau`, `max_accel` | defaults | 0.545, 0.01, 5.0 | s, s, m/s². The model's steering lag, speed lag and acceleration limit, fitted to the Gazebo car. Nobody has measured the robot's (see "Calibration"), so it keeps the sim's. Must be positive. |
 | `state_topic`, `costmap_topic` | defaults | `/state_estimation/odom`, `/global_costmap/costmap` | |
 
 The sim car is not the robot. With `sim:=true`, `autonomy_real.launch.py` gives the controller the
 Gazebo car's vehicle model (`SIM_VEHICLE` there: 0.5 m, 0.6 rad and the default lags), or
 `hardware.yaml`'s `/**` values would reach the sim controller too. Check with
-`ros2 param get /controller_server wheelbase`: 0.36322 on the robot, 0.5 in the sim.
+`ros2 param get /controller_server wheelbase`: 0.38735 on the robot, 0.5 in the sim.
 
 ## Nav2 local planning
 
@@ -495,10 +495,10 @@ Every value here was guessed from code that contradicts itself; measure each one
 | Parameter | How |
 |---|---|
 | `wheel_radius_m`, `gear_ratio` | `gear_ratio` is motor-gear teeth / wheel-gear teeth (10/12): count the teeth. Then push the robot a tape-measured distance (10 m) in a straight line, slowly (under 0.5 m/s, see "Encoder speed limit" under [Known limits](#known-limits)), with the bridge running. Read `/wheel_angle` before and after: `wheel_radius_m` = distance / radians(Δ`/wheel_angle`), the loaded rolling radius. The push measures only the product `gear_ratio` × `wheel_radius_m`, so a wrong tooth count ends up in the radius. Not `/wheel_ticks`: it is the raw AS5047P motor-shaft angle, 0-360°, and wraps every 0.53 m. |
-| `servo_center_deg` | Front jacked up. Publish `/cmd_vel_out` (`-r 10`) with `x: 0.3` and `z: 0.0` while adjusting the value until the wheels point straight. The deployed `joystick_node` used 45; the firmware uses 90. |
+| `servo_center_deg` | Front jacked up. Publish `/cmd_vel_out` (`-r 10`) with `x: 0.3` and `z: 0.0` while adjusting the value until the wheels point straight. 90 since 2026-11-14: the servo horn was refitted so the wheels point straight at 90, which is where the Arduino's `Servo` library holds the servo after every reset. `joystick_node`'s `STEER_ORIGIN` must match. |
 | `servo_deg_per_rad`, `max_steer_rad` | Command a known yaw rate at a known speed (δ = atan(ω·L/v)), read the road-wheel angle with a protractor, take the ratio servo-degrees/road-radian. `max_steer_rad` is the mechanical limit of the linkage. `joy_to_cmdvel` and the controller read the same shared `/**` value. |
 | `pwm_per_mps`, `pwm_limit` | On the ground, publish (`-r 10`) `x:` 0.1, 0.2, 0.3, 0.4, 0.5 m/s in turn and read the steady `/odom` speed for each; fit a line through PWM (= x·pwm_per_mps) versus measured speed and update `pwm_per_mps`. Stop if `/odom` goes above 0.5 m/s: the encoder misreads speeds above 0.53 m/s. `pwm_limit` caps the drive (110 = today's joystick cap; firmware accepts 255). The drive is open loop, so the fit is the speed control. |
-| `wheelbase` | Tape measure, rear axle centre to front axle centre. The URDF says 0.36322, the HAL 0.30. The MPPI controller's model reads the same `/**` value, so one measurement fixes both. |
+| `wheelbase` | Tape measure, rear axle centre to front axle centre. Measured 15 1/4 in = 0.38735 m on 2026-11-14; before that the value was 0.36322 from a 2025 sim URDF (the old HAL said 0.30). The MPPI controller's model reads the same `/**` value, so one measurement fixes both. |
 | `steer_tau`, `drive_tau`, `max_accel` (`controller_server`) | Unmeasured, the controller keeps the sim car's fit. After `pwm_per_mps`, on the ground, step `/cmd_vel_out` from 0 to 0.5 m/s straight ahead: the slope at the start of the `/odom` speed is `max_accel`, the time constant of its approach to the final speed `drive_tau`. Then at a steady 0.5 m/s step the steering and fit the time constant of the yaw rate on `/imu/data` for `steer_tau`. Not `/odom`'s yaw rate: it is computed from the command (see "Known limits"). Write the values into `controller_server`. Only MPPI uses them: the EKF's model stays the sim car's (see "Known limits"). |
 | IMU covariances | `ros2 run imu_package imu_covariance_estimator` while driving, then paste into `imu_node.py`. The committed values were measured at rest. The autonomy stack does not read them: `state_estimation` ignores message covariances and uses its own constant `R` (delivery-autonomy `sensors.py`, see "EKF tuning" under [Known limits](#known-limits)). |
 
@@ -533,7 +533,7 @@ Every value here was guessed from code that contradicts itself; measure each one
   robot's wheelbase and steering limit (`wheelbase`, `max_steer_rad` from `/**`). MPPI plans only
   turns the robot can make, and the bridge steers the angle MPPI asked for. Before, it planned
   with the sim car's 0.5 m and 0.6 rad. It thought it could turn on a 0.73 m radius where the
-  robot needs 0.78 m, and any model angle above 0.570 rad came out up to 6.6 % wider than
+  robot needs 0.83 m, and any model angle above 0.542 rad came out up to 13.7 % wider than
   predicted. The steering lag (0.545 s), speed lag (0.01 s) and acceleration limit (5 m/s²) are
   still the Gazebo fit. The robot's servo and open-loop drive have not been measured (see
   "Calibration"). The EKF's model also stays the sim car's. That does no harm: it turns the

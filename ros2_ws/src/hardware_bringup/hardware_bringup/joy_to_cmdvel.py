@@ -45,7 +45,7 @@ class JoyToCmdVel(Node):
         self._invert_steer = bool(p('invert_steer', False))
         self._max_speed = float(p('max_speed', 1.5))
         self._geom = DriveGeometry(
-            wheelbase=float(p('wheelbase', 0.36322)),
+            wheelbase=float(p('wheelbase', 0.38735)),
             min_speed_for_steer=float(p('min_speed_for_steer', 0.05)),
             max_steer_rad=float(p('max_steer_rad', 0.4363)),
         )

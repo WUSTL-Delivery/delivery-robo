@@ -54,7 +54,7 @@ def main(argv=None):
         except ImportError:
             print('mppi_step without a vehicle (delivery-autonomy before TDM-41)')
         else:
-            fixed['vehicle'] = Vehicle(wheelbase=0.36322, max_steer_rad=0.4363)
+            fixed['vehicle'] = Vehicle(wheelbase=0.38735, max_steer_rad=0.4363)
             max_steer = fixed['vehicle'].max_steer_rad
         fixed.update(lower_bounds=jnp.array([-0.5, -max_steer]),
                      upper_bounds=jnp.array([v_target, max_steer]))

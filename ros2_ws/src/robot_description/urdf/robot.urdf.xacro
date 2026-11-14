@@ -69,7 +69,7 @@
   <xacro:property name="wheel_width" value="0.08"/>
   <xacro:property name="wheel_mass" value="2.0"/>
   <xacro:property name="chassis_mass" value="20.0"/>
-  <xacro:property name="wheelbase" value="0.5"/>
+  <xacro:property name="wheelbase" value="0.38735"/>  <!-- 15 1/4 in axle to axle, tape-measured -->
   <xacro:property name="track_width" value="0.55"/>
 
   <xacro:macro name="box_inertia" params="m w h d">

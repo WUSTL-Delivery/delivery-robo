@@ -118,12 +118,12 @@ class ArduinoBridge(Node):
         self._max_enc_dt = float(p('max_encoder_dt', 0.5))
         # --- calibration (see README "Calibration") ---
         self._geom = DriveGeometry(
-            wheelbase=float(p('wheelbase', 0.36322)),
+            wheelbase=float(p('wheelbase', 0.38735)),
             min_speed_for_steer=float(p('min_speed_for_steer', 0.05)),
             max_steer_rad=float(p('max_steer_rad', 0.4363)),
         )
         self._servo = ServoMap(
-            center_deg=float(p('servo_center_deg', 45.0)),
+            center_deg=float(p('servo_center_deg', 90.0)),
             deg_per_rad=float(p('servo_deg_per_rad', math.degrees(1.0))),
             min_deg=float(p('servo_min_deg', 0.0)),
             max_deg=float(p('servo_max_deg', 180.0)),

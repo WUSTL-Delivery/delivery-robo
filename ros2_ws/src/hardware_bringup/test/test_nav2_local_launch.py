@@ -142,7 +142,10 @@ def test_tdm22_hybrid_astar_planner(tdm21_params):
     grid = planner['GridBased']
     assert grid['plugin'] == 'nav2_smac_planner::SmacPlannerHybrid'
     assert grid['motion_model_for_search'] == 'DUBIN'    # forward only: MPPI can't drive cusps
-    assert grid['minimum_turning_radius'] >= 0.78        # never tighter than the robot can turn
+    with open(os.path.join(PKG, 'config', 'hardware.yaml')) as f:
+        geometry = yaml.safe_load(f)['/**']['ros__parameters']
+    tightest = geometry['wheelbase'] / math.tan(geometry['max_steer_rad'])
+    assert grid['minimum_turning_radius'] >= tightest    # never tighter than the robot can turn
     assert grid['angle_quantization_bins'] == 72
     assert 0.0 < grid['max_planning_time'] <= 1.0        # local_planner replans at 2 Hz
     assert grid['cache_obstacle_heuristic'] is False     # rolling window + live scans
