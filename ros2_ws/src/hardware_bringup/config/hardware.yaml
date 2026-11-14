@@ -95,10 +95,11 @@ controller_server:
                                   # = local_planner's goal_tolerance. At the path's end beyond it: goal aborted
     yaw_goal_tolerance: 3.15      # rad, >= pi turns the heading check off: the robot needs no heading at the goal.
                                   # Default 0.15 (8.6 deg); on the Oct 24 Pi test the robot drove on past its goal
-    # TEMPORARY (2026-11-14), for the first outdoor path test: overrides /** max_steer_rad (0.4108)
-    # for the controller only. 0.314 rad = 18 deg = 13 servo steps either side of 94 (m b 81..107),
-    # 1.19 m tightest turn: enough for 90-degree path corners, while the parallel-steered front
-    # wheels drag less than at the mechanical limit. A guess, not a measurement.
+    # TEMPORARY (2026-11-14), for the first outdoor path tests: overrides /** max_steer_rad (0.4108)
+    # for the controller only. 0.266 rad = 15.2 deg = 11 servo steps either side of 94 (m b 83..105),
+    # 1.42 m tightest turn: still takes 90-degree corners on paths 1.6 m wide or more. Lowered from
+    # 0.314 (18 deg), at which the parallel-steered front wheels still dragged. A guess, not a
+    # measurement.
     # TODO: measure the angle where the front wheels start to drag (README "Known limits",
     # "Temporary steering clamp") and replace this, or delete it to go back to /**.
-    max_steer_rad: 0.314
+    max_steer_rad: 0.266
