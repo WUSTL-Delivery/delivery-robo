@@ -42,7 +42,8 @@ class JoystickNode(Node):
 
         # Constants
         self.MAX_PWM = 110.0
-        self.MAX_STEER = 17.0     # servo steps either side: mechanical stops 75/115 minus 2 = hardware.yaml max_steer_rad
+        # servo steps either side: mechanical stops 75/115 minus 2 = hardware.yaml max_steer_rad
+        self.MAX_STEER = 17.0
         self.STEER_ORIGIN = 94.0  # wheels straight = hardware.yaml servo_center_deg
 
         # Initialize Serial; while it is closed (board unplugged, /dev/motor missing, write
