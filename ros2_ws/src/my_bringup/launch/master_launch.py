@@ -115,8 +115,10 @@ def _obstacle_guard_arg():
 
 def _use_sensor_condition(sensors, flag, mode, sim):
     """
-    IfCondition shared by the lidar/realsense drivers: on only with both ``sensors`` and the
-    driver's own flag true, and never in the autonomy+sim combo (Gazebo provides the topic).
+    Return the IfCondition shared by the lidar and realsense drivers.
+
+    On only with both ``sensors`` and the driver's own flag true, and never in the autonomy+sim
+    combo (Gazebo provides the topic).
     """
     return IfCondition(PythonExpression(
         ["'", sensors, "' == 'true' and '", flag, "' == 'true' and not ('", mode,
@@ -373,7 +375,8 @@ def generate_launch_description():
             autonomy_nodes.append(IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(hw_dir, 'launch', 'autonomy_real.launch.py')),
-                # nav2: the controller slows and stops for the costmap only when Nav2 publishes one.
+                # nav2: the controller slows and stops for the costmap only when Nav2
+                # publishes one.
                 # obstacle_guard: 'false' if either its own flag or sensors:=false says so.
                 launch_arguments={
                     'sim': sim, 'nav2': nav2,

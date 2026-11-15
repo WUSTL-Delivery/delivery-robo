@@ -1,6 +1,8 @@
 """
-TDM-52 (sensors bundle): sensors:=false forces lidar, realsense and obstacle_guard off together,
-independent of their own flags; nav2's own default/behavior is untouched.
+TDM-52 (sensors bundle) tests.
+
+sensors:=false forces lidar, realsense and obstacle_guard off together, independent of their own
+flags; nav2's own default/behavior is untouched.
 
 Pure functions (no package lookups), so no sourced/built workspace is needed to run these.
 """

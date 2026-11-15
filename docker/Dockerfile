@@ -52,6 +52,13 @@ RUN userdel -r ubuntu \
 USER dev
 WORKDIR /home/dev/delivery-robo
 
+# CI: builds and tests the workspace; the build fails if any test fails.
+FROM deps AS test
+COPY ros2_ws/src /ws/src
+RUN . /opt/ros/jazzy/setup.sh && cd /ws && colcon build --packages-ignore simulation \
+ && { colcon test --packages-ignore simulation --return-code-on-test-failure; status=$?; \
+      colcon test-result --verbose; exit $status; }
+
 # The Pi: the built workspace, started from deployment/robot_config.yaml (robot-entrypoint.sh).
 FROM deps AS runtime
 COPY ros2_ws/src /ws/src

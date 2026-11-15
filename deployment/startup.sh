@@ -33,6 +33,7 @@ else
 fi
 
 STAGE=initialization
+# shellcheck disable=SC2154  # startup_status is assigned inside the trap
 trap 'startup_status=$?; log "startup exited: stage=$STAGE exit=$startup_status elapsed=${SECONDS}s"' EXIT
 
 stage() { STAGE="$1"; log "===== $STAGE ====="; }
@@ -178,6 +179,7 @@ case "${SIM:-false}" in
   *) log "WARNING: sim must be true or false, got '$SIM'; using false"; SIM=false; BUILD_IGNORE=(--packages-ignore simulation) ;;
 esac
 # Newly initialized driver source that has never been built -> rebuild (unless ignored above).
+# shellcheck disable=SC2043  # a list on purpose
 for pkg in sllidar_ros2; do
   [[ " ${BUILD_IGNORE[*]} " == *" $pkg "* ]] && continue
   if [ -f "$WS/src/$pkg/package.xml" ] && [ ! -d "$WS/install/$pkg" ]; then

@@ -31,6 +31,12 @@ VS Code: "Dev Containers: Reopen in Container" uses `.devcontainer/devcontainer.
 `dev` service). The Gazebo sim and RViz are not in the image; they stay in delivery-autonomy's
 `nix develop` shell (`deployment/README.md`, "Testing with the sim").
 
+## Checks
+
+`.github/workflows/checks.yml` runs on every push: shellcheck, yamllint, `package.xml` and
+workflow checks, then `colcon build` and `colcon test` on amd64 and arm64. The same build and
+tests locally: `docker build -f docker/Dockerfile --target test .`
+
 ## Running on the Pi
 
 The Pi pulls a published image; it does not build. Pin the tag you run in `.env` next to
@@ -55,7 +61,8 @@ RealSense, u-blox, I2C, joystick), and restarts unless stopped. The udev rules
 
 `.github/workflows/image.yml` publishes on every push that changes the image's inputs (and from
 the Actions tab once it is on `main`): `linux/arm64` and `linux/amd64` built on native runners,
-tagged with the 7-character commit, plus `latest` from `main`.
+tagged with the 7-character commit, plus `latest` from `main`. Commits that only change `*.md`
+files get no image, so pin a commit that has one.
 
 By hand (needs package rights in the WUSTL-Delivery org; amd64 is emulated on an arm Mac):
 
