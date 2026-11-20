@@ -13,7 +13,8 @@ delivery-autonomy itself is never edited:
   obstacles in Nav2's costmap only when Nav2 runs. Without a costmap it would otherwise crawl at
   crawl_speed (0.3 m/s) waiting for one;
 * global_planner runs with cwd = planner_cache_dir so its osmnx Overpass cache (./cache)
-  survives reboots; robot.service sets no WorkingDirectory;
+  survives reboots; robot.service sets no WorkingDirectory. On the robot it starts each route
+  from the gated /gps/fix (use_gps_start); with sim:=true from TF, as before;
 * obstacle_guard (TDM-52, robot only) locks twist_mux's navigation input while neither the lidar
   (/scan_filtered) nor the depth camera (/camera/scan) publishes: the user's rule is that the
   robot drives on with one of them missing and stops driving autonomously with both missing

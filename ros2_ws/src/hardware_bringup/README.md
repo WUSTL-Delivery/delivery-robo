@@ -91,13 +91,17 @@ joystick still overrides.
 
 ## delivery-autonomy version
 
-The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `43afae9` of
+The submodule `ros2_ws/src/delivery-autonomy` is pinned to commit `50fb7ff` of
 delivery-autonomy's **`dev`** branch. That is our branch of the upstream code, made while its
 author is away. It adds the controller parameters below, the slow-down and stop for costmap
 obstacles, the taper into the path end, MPPI's costmap cost, the robot's geometry as controller
 parameters, the WGS84 GPS projection, and the
 sim fixes. Since TDM-43 (43afae9) the controller also ends a goal at the end of the path: reached
-within `xy_goal_tolerance` at any heading, aborted beyond it, so it no longer drives on past the goal. `.gitmodules` says `branch = dev` for documentation only: `git submodule update` checks
+within `xy_goal_tolerance` at any heading, aborted beyond it, so it no longer drives on past the goal.
+Since 50fb7ff (PR #5) the planner starts each route on the robot from the latest valid GPS fix
+(`use_gps_start`, on unless `sim:=true`; `autonomy_real.launch.py` feeds it the gated `/gps/fix`)
+and refuses to plan without a fix or from one older than `gps_max_age_sec` (2 s); the sim keeps
+its TF start. `.gitmodules` says `branch = dev` for documentation only: `git submodule update` checks
 out the pinned commit, not the branch head. Move the pin with `git submodule update --remote`
 or `git update-index --cacheinfo 160000,<sha>,ros2_ws/src/delivery-autonomy`.
 

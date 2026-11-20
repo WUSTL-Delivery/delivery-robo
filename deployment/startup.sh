@@ -148,6 +148,9 @@ submodule_head() { if [ -e "$REPO/$1/.git" ]; then git -C "$REPO/$1" rev-parse H
 AUTONOMY_BEFORE=$(submodule_head "$AUTONOMY_SUBMODULE")
 if [ -f "$REPO/.gitmodules" ]; then
   mapfile -t SUBMODULE_PATHS < <(git config -f "$REPO/.gitmodules" --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
+  # sync first: .git/config keeps the URL from the first init, so a moved .gitmodules url
+  # (delivery-autonomy: DanielErbsen fork -> sebtheiler) would otherwise never be fetched from.
+  git submodule sync --recursive -- "${SUBMODULE_PATHS[@]}" >/dev/null 2>&1 || true
   # 180 s: the first init clones delivery-autonomy (a few MB of meshes and history).
   if [ "${#SUBMODULE_PATHS[@]}" -gt 0 ] && \
      timeout 180 git submodule update --init --recursive -- "${SUBMODULE_PATHS[@]}" 2>&1; then
