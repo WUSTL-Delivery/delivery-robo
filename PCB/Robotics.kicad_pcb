@@ -6501,7 +6501,7 @@
 		(descr "Through hole straight pin header, 2x06, 2.54mm pitch, double rows")
 		(tags "Through hole pin header THT 2x06 2.54mm double row")
 		(property "Reference" "J16"
-			(at 1.27 -2.38 90)
+			(at 5.4235 6.35 180)
 			(layer "F.SilkS")
 			(uuid "922a6f53-94a0-4ee3-8411-187df3903488")
 			(effects
